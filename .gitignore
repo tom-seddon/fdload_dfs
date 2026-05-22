@@ -9,3 +9,6 @@
 /bin/64tass
 /bin/beebasm
 /bin/zx02
+
+# Windows zx02 build byproducts
+/bin/zx02.ilk

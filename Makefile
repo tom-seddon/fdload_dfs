@@ -68,6 +68,9 @@ ifneq ($(UNAME),Windows_NT)
 # Build 64tass if required.
 	test -f "$(TASS)" || (cd "dependencies/tass64-code.r3243" && $(MAKE) 64tass && cp "64tass" "$(TASS)")
 endif
+	$(BEEBASM) --help
+	$(TASS) --help
+	-$(ZX02) -h
 
 ##########################################################################
 ##########################################################################
@@ -83,3 +86,15 @@ ifneq ($(UNAME),Windows_NT)
 	cd "dependencies/tass64-code.r3243" && $(MAKE) clean
 	rm -f "$(BIN)/64tass"
 endif
+
+##########################################################################
+##########################################################################
+
+# Intended for manual invocation.
+
+# Invoke from a VC++ command line tools prompt.
+.PHONY:make_windows_zx02
+make_windows_zx02: _SRC:=$(PWD)/dependencies/zx02/src
+make_windows_zx02:
+	$(SHELLCMD) mkdir "$(BUILD)"
+	cd /d "$(BUILD)" && cl /W4 /Zi /O2 "/Fe$(PWD)/bin/zx02.exe" "$(_SRC)/compress.c" "$(_SRC)/memory.c" "$(_SRC)/optimize.c" "$(_SRC)/zx02.c"
