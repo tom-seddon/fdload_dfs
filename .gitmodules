@@ -1,0 +1,12 @@
+[submodule "dependencies/beeb"]
+	path = dependencies/beeb
+	url = https://github.com/tom-seddon/beeb
+[submodule "dependencies/shellcmd.py"]
+	path = dependencies/shellcmd.py
+	url = https://github.com/tom-seddon/shellcmd.py
+[submodule "dependencies/beebasm"]
+	path = dependencies/beebasm
+	url = https://github.com/stardot/beebasm
+[submodule "dependencies/zx02"]
+	path = dependencies/zx02
+	url = https://github.com/dmsc/zx02
