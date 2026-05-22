@@ -1,0 +1,11 @@
+# build byproducts
+/build/
+
+# tass64 build byproducts
+/dependencies/tass64-code.*/*.o
+/dependencies/tass64-code.*/64tass
+
+# Unix-type tools
+/bin/64tass
+/bin/beebasm
+/bin/zx02
