@@ -30,6 +30,8 @@ as the path separator.)
 A slightly manual process. Try to ensure the versions are about the
 same on all platforms, but any issues will come out in the wash.
 
+After updating the dependencies, commit changes to the EXEs in `bin`.
+
 ## GNU Make
 
 Copy appropriate GNU Make exe into `bin\gmake.exe`.
@@ -58,4 +60,6 @@ Run `x64 Native Tools Command Prompt`.
 
 Change to working copy folder.
 
-Run `make make_windows_zx02`. Any warnings are benign... hopefully.
+Run `make make_windows_zx02` to recreate `bin\zx02.exe` and
+`bin\zx02.pdb` (which may not prove useful). Any warnings are
+benign... hopefully.

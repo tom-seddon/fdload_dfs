@@ -1,5 +1,6 @@
 # build byproducts
 /build/
+/.zx02_cache/
 
 # tass64 build byproducts
 /dependencies/tass64-code.*/*.o
