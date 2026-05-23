@@ -118,8 +118,8 @@ def pack_cmd(options):
         if options.optimal: c_path=entry.packed
         else: c_path=entry.qpacked
 
+        global subprocess
         import subprocess
-        globals()['subprocess']=subprocess
         
         returncode=run_zx02(entry.orig,
                             c_path,
@@ -158,6 +158,7 @@ def find_all_entries(options):
 ##########################################################################
 
 def repack_cmd(options):
+    global subprocess
     import concurrent.futures,subprocess
     
     entries=[entry for entry in find_all_entries(options) if not os.path.isfile(entry.packed)]
@@ -223,7 +224,7 @@ def clean_cmd(options):
     for entry in entries:
         try: rmdir(entry.folder)
         except OSError as e:
-            if e.errno==66:
+            if e.errno==41:     # ENOTEMPTY
                 # ignore non-empty folders. Some stuff just wasn't old
                 # enough.
                 pass
@@ -242,7 +243,7 @@ def main(argv,argv0=None):
     cache_default=None
     
     if argv0 is not None:
-        zx02_default=os.path.join(os.path.dirname(argv0),'zx02')
+        zx02_default=os.path.join(os.path.dirname(argv0),get_exe_name('zx02'))
         if not os.path.isfile(zx02_default): zx02_default=None
 
         cache_default=os.path.normpath(os.path.join(os.path.dirname(argv0),'..','.zx02_cache'))
