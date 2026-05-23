@@ -197,7 +197,7 @@ def repack_cmd(options):
 ##########################################################################
 
 def clean_cmd(options):
-    import stat,datetime
+    import stat,datetime,errno
     
     entries=find_all_entries(options)
 
@@ -224,7 +224,7 @@ def clean_cmd(options):
     for entry in entries:
         try: rmdir(entry.folder)
         except OSError as e:
-            if e.errno==41:     # ENOTEMPTY
+            if e.errno==errno.ENOTEMPTY:
                 # ignore non-empty folders. Some stuff just wasn't old
                 # enough.
                 pass
