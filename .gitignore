@@ -13,3 +13,6 @@
 
 # Windows zx02 build byproducts
 /bin/zx02.ilk
+
+# beeblink stuff
+/tests/beeblink/fdload_dfs/Z/

@@ -1,0 +1,111 @@
+* memory map ramblings
+
+Ramblings indeed.
+
+** Zero page use and notes
+
+| Region | What               |
+|--------+--------------------|
+| $0x    | current effect     |
+| $1x    | current effect     |
+| $2x    | current effect     |
+| $3x    | current effect     |
+| $4x    | current effect     |
+| $5x    | current effect     |
+| $6x    | current effect     |
+| $7x    | current effect     |
+| $8x    | transition effect? |
+| $9x    | transition effect? |
+| $Ax    | transition effect? |
+| $Bx    | music?             |
+| $Cx    | music?             |
+| $Dx    | music?             |
+| $Ex    | framework          |
+| $Fx    | framework/Acorn OS |
+
+- "Acorn OS" covers $FC, which is used to store the accumulator as
+  part of the IRQ handler preamble in the MOS ROM. This is not free
+  for use.
+- $F4 should not be set. ROMSEL is readable on the Master so there's
+  no need for a RAM copy. Anything that needs to save and restore
+  ROMSEL can just read the value from $FE30. (Same applies to ACCCON
+  at $FE34.)
+- do transition effect and current effect even need to be separate?
+
+** Main memory use and notes
+
+| Page | What       | Notes                         |
+|------+------------+-------------------------------|
+|    1 | (stack)    | stack                         |
+|    2 | reserved   | IRQ1V and global entry points |
+|    3 | sector 0   | used while loading            |
+|    4 | sector 1   | used while loading            |
+|    5 | sector 2   | used while loading            |
+|    6 | sector 3   | used while loading            |
+|    7 | sector 4   | used while loading            |
+|    8 | sector 5   | used while loading            |
+|    9 | sector 6   | used while loading            |
+|    a | sector 7   | used while loading            |
+|    b | sector 8   | used while loading            |
+|    c | sector 9   | used while loading            |
+|    d | NMI/loader | used while loading            |
+|    e | loader     | used while loading            |
+|    f | loader     | used while loading            |
+
+The only permanently reserved region is page 2.
+
+Nothing reserves any specific regions of page 1, which is intended to
+be used as the 6502 stack, in the usual 6502 stack fashion.
+
+Anything "used while loading" is only used while loading. Once loading
+is over, it can be discarded. Current plan is for each load to re-copy
+anything required, on the basis that the time spent copying (~768
+bytes, so maybe figure ~10,000 cycles?) will be dwarfed by any time
+spent accessing the disk.
+
+Regarding having all of page 2 reserved:
+
+- IRQ1V is at $0204, and unavoidable, so at least this part of page 2
+  will have to be reserved
+- the OS memory clear flags are at $0258, and it'd be nice to be able
+  to leave them set to $03, so that BREAK does something relatively
+  clean even after all the OS workspace has been overwritten
+- the BRK handler goes round the ROMs before doing a =JMP (BRKV)= -
+  reserving all of page 2 might mean that it'd be possible to make BRK
+  still work in some fashion by clearing out the ROMs table. This'd be
+  nice for development, since BRK is often the end result of any
+  wayward code execution
+
+And it's not like there are any super compelling display addresses
+lower than $300. A start address of $300 gives a useful number of rows
+with some common strides:
+
+| Stride | # Rows |
+|--------+--------|
+|    256 |    125 |
+|    320 |    100 |
+|    512 |   62.5 |
+|    640 |     50 |
+
+The 62.5*512 case is annoying, but going 256 bytes lower would mean a
+start address of $200, overlapping key parts of page 2.
+
+And 101 rows of 320 would need a spicy start address of $01C0.
+
+** Page 2 use and notes
+
+| Start | What                  | Notes                                   |
+|-------+-----------------------+-----------------------------------------|
+| $200  | Entry point           |                                         |
+| $202  | Entry point           |                                         |
+| $204  | IRQ1V                 | IRQ handler preamble does =JMP ($0204)= |
+| $206  | Entry point           |                                         |
+| $208  | Entry point           |                                         |
+| $20A  | Entry point           |                                         |
+| $20c  |                       |                                         |
+| $258  | OS memory clear flags | Best to keep this set to $03            |
+| $259  |                       |                                         |
+
+Keeping the OS memory clear flags set to 3 means there'll be a memory
+clear on BREAK, and the OS won't get confused by whatever junk has
+been written into its workspace. Makes things a bit tidier.
