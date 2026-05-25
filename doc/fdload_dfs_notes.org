@@ -1,3 +1,12 @@
+#+STARTUP: overview
+
+* .dir-locals.el
+
+#+begin_src elisp
+  ((nil . ((compile-command . "cd ~/github/fdload_dfs && make _tom"))))
+#+end_src
+
+
 * memory map ramblings
 
 Ramblings indeed.

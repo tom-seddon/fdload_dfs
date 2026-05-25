@@ -16,3 +16,6 @@
 
 # beeblink stuff
 /tests/beeblink/fdload_dfs/Z/
+
+# Emacs stuff
+/.dir-locals.el

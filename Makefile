@@ -46,14 +46,22 @@ export SHELLCMD
 
 # Folder paths.
 BIN:=$(ROOT)/bin
+BEEB_BIN:=$(ROOT)/dependencies/beeb/bin
 BUILD:=$(ROOT)/build
+BEEBLINK:=$(ROOT)/tests/beeblink/fdload_dfs
 export BIN
+export BEEB_BIN
 export BUILD
 
-# How to run tools.
-ZX02:=$(BIN)/zx02
-BEEBASM:=$(BIN)/beebasm
-TASS:=$(BIN)/64tass
+# Names of executable files for tools. No extension and no args.
+ZX02_EXE:=$(BIN)/zx02
+BEEBASM_EXE:=$(BIN)/beebasm
+TASS_EXE:=$(BIN)/64tass
+
+# How to run tools. May include command line options.
+ZX02:=$(ZX02_EXE)
+BEEBASM:=$(BEEBASM_EXE)
+TASS:=$(TASS_EXE) -Wall --case-sensitive --cbm-prg $(if $(VERBOSE),,--quiet) --long-branch --m65c02 --verbose-list
 ZX02TOOL:=$(PYTHON) "$(BIN)/zx02tool.py"
 export ZX02
 export BEEBASM
@@ -65,9 +73,8 @@ export ZX02TOOL
 
 .PHONY:build
 build: _build_dependencies
-	$(BEEBASM) --help
-	$(TASS) --help
-	-$(ZX02) -h
+	$(TASS) -L "$(BUILD)/zx02_decomp_basic_tester.lst" -o "$(BUILD)/zx02_decomp_basic_tester.prg" "src/common/zx02_decomp_basic_tester.s65"
+	$(PYTHON) "$(BEEB_BIN)/prg2bbc.py" --io "$(BUILD)/zx02_decomp_basic_tester.prg" "$(BEEBLINK)/Z/$$.ZX02"
 
 ##########################################################################
 ##########################################################################
@@ -83,13 +90,13 @@ clean: _clean_dependencies
 _build_dependencies:
 ifneq ($(UNAME),Windows_NT)
 # build/zx02 zx02 if required.
-	test -f "$(ZX02)" || (cd "dependencies/zx02" && $(RECENT_GNU_MAKE) all && cp "build/zx02" "$(ZX02)")
+	test -f "$(ZX02_EXE)" || (cd "dependencies/zx02" && $(RECENT_GNU_MAKE) all && cp "build/zx02" "$(ZX02_EXE)")
 
 # Build BeebAsm if required.
-	test -f "$(BEEBASM)" || (cd "dependencies/beebasm/src" && $(MAKE) code VERBOSE=$(VERBOSE) && cp "../beebasm" "$(BEEBASM)")
+	test -f "$(BEEBASM_EXE)" || (cd "dependencies/beebasm/src" && $(MAKE) code VERBOSE=$(VERBOSE) && cp "../beebasm" "$(BEEBASM_EXE)")
 
 # Build 64tass if required.
-	test -f "$(TASS)" || (cd "dependencies/tass64-code.r3243" && $(MAKE) 64tass && cp "64tass" "$(TASS)")
+	test -f "$(TASS_EXE)" || (cd "dependencies/tass64-code.r3243" && $(MAKE) 64tass && cp "64tass" "$(TASS_EXE)")
 endif
 
 ##########################################################################
@@ -124,3 +131,11 @@ make_windows_zx02:
 .PHONY:test_zx02tool
 test_zx02tool: _build_dependencies
 	$(MAKE) -C "tests/test_zx02tool"
+
+##########################################################################
+##########################################################################
+
+.PHONY:_tom
+_tom:
+	$(MAKE)
+

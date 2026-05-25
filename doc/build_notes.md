@@ -102,3 +102,24 @@ tight enough that non-optimal compression just ain't enough.
 The zx02tool output is exactly the same as you'd get from zx02, just
 produced a bit more quickly in the best case. zx02 can be run some
 other way, and the output can be used just the same!
+
+# Folder structure
+
+- `bin` - any generic binaries/tools for general use for building
+- `build` (gitignored) - all build output
+- `.zx02_cache` (gitignored) - zx02tool cache
+- `dependencies` - any 3rd party stuff not specific to this project,
+  be it submodules or copies of upstream repo or whatever
+- `doc` - any docs
+- `src` - source code
+- `tests` - misc grab bag of ad-hoc nonsense. The build mustn't depend
+  on anything in this folder. Though it may write to it, as it has a
+  BeebLink volume in there... so this may still need some tidying up
+  
+Notes:
+
+- `build` and `.zx02_cache` are separate so that it's easy to have
+  `make clean` (delete build byproducts, force full build) separate
+  from deleting the zx02tool cache (condemning yourself to a lengthy
+  wait)
+

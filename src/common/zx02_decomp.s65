@@ -1,0 +1,273 @@
+                .section zx02_workspace_zp
+offset: .fill 2
+bitr: .fill 1
+ZX0_dst: .fill 2
+ZX0_src: .fill 2
+pntr: .fill 2
+
+; bit 7 (P) : 0=single part; 1=piecewise
+; bit 6 (X) : on entry: 0=first part; 1=subsequent part
+;             unpacking: 0=buffer not empty; 1=buffer empty
+;
+; N.B., single part unpacking only has a first part! It isn't valid
+; for ZX0_resume_state to be $40 on entry...
+ZX0_resume_state: .fill 1
+                .endsection zx02_workspace_zp
+
+                .section zx02_workspace_main
+entry_s: .fill 1
+stack_buf_size: .fill 1
+stack_buf: .fill 12
+                .endsection zx02_workspace_main
+
+                .section zx02_code
+;--------------------------------------------------
+;
+; Decompress ZX0 data (6502 optimized format) - slightly butchered
+; version of zx02-small.asm.
+;
+; One-off unpack:
+;
+; 1. Set ZX0_resume_state to $00
+;
+; 2. Set (ZX0_dest) to address to unpack to
+;
+; 3. Set (ZX0_src) to address to unpack from
+;
+; 4. jsr full_decomp
+;
+; The data will be unpacked in one go, much as per the original ZX02
+; routines.
+;
+; Piecewise unpack:
+;
+; 1. Set (ZX0_dest) to address to unpack to. You're committed to this
+; address once started! zx02 will look back into previously unpacked
+; data, which needs to still be available
+;
+; 2. Set ZX0_resume_state to $80 specifically
+;
+; 3. Point (ZX0_src) at page-aligned first 256 bytes of packed data
+;
+; 4. jsr full_decomp
+;
+; On exit, test ZX0_resume_state.
+;
+; If bit 7 set, supply next 256 bytes of data and go to step 3. Unlike
+; ZX0_dest, ZX0_src can be different each time. It has to be
+; page-aligned though (the LSB is used as a flag).
+
+full_decomp: .block
+                tsx
+                stx entry_s
+
+                bit ZX0_resume_state
+                bvs resume      ; taken if resume data present
+
+                lda #$80
+                sta bitr
+
+                stz offset+0
+                stz offset+1
+                
+                ; Decode literal: Copy next N bytes from compressed file
+                ;    Elias(length)  byte[1]  byte[2]  ...  byte[N]
+decode_literal:
+                ldx   #1
+                jsr   get_elias
+
+                clc             ; copy from src
+                jsr copy_bytes
+                bcs   dzx0s_new_offset
+
+                ; Copy from last offset (repeat N bytes from last offset)
+                ;    Elias(length)
+                inx
+                jsr   get_elias
+dzx0s_copy:
+; C=0 from get_elias
+
+                lda ZX0_dst+0
+                sbc offset+0
+                sta pntr+0
+
+                lda ZX0_dst+1
+                sbc offset+1
+                sta pntr+1
+
+                ; TODO - will C always be set from the pointer
+                ; adjustment?
+                sec             ; copy from pntr
+                jsr copy_bytes
+
+                bcc   decode_literal
+
+                ; Copy from new offset (repeat N bytes from new offset)
+                ;    Elias(MSB(offset))  LSB(offset)  Elias(length-1)
+dzx0s_new_offset:
+; Read elias code for high part of offset
+                inx
+                jsr   get_elias
+                beq   exit  ; Read a 0, signals the end
+                ; Decrease and divide by 2
+                dex
+                txa
+                lsr   a
+                sta   offset+1
+
+                ; Get low part of offset, a literal 7 bits
+                jsr   get_src_byte
+
+                ; Divide by 2
+                ror   a
+                sta   offset
+
+                ; And get the copy length.
+                ; Start elias reading with the bit already in carry:
+                ldx   #1
+                jsr   elias_skip1
+
+                inx
+                bcc   dzx0s_copy
+
+; Read an elias-gamma interlaced code.
+; ------------------------------------
+elias_loop:
+; Read next data bit to result
+                asl   bitr
+                rol   a
+                tax
+
+get_elias:
+; Get one bit
+                asl   bitr
+                bne   elias_skip1
+
+                ; Read new bit from stream
+                jsr   get_src_byte
+                ;sec   ; not needed, C=1 guaranteed from last bit
+                rol   a
+                sta   bitr
+
+elias_skip1:
+                txa
+                bcs   elias_loop
+                ; Got ending bit, stop reading with C=0
+                rts
+
+;-------------------------------------------------------------------------
+
+; hit end of data. indicate no resume.
+exit:
+                lsr ZX0_resume_state
+                rts
+                
+;-------------------------------------------------------------------------
+
+resume:
+                ldy stack_buf_size
+restore_stack_loop:
+                lda stack_buf-1,y
+                pha
+                dey
+                bne restore_stack_loop
+
+                ; turn %11000000 (piecewise unpack; not first part)
+                ; into %10000000 (piecewise unpack; buffer not empty)
+                asl ZX0_resume_state
+                
+                ply             ; restore Y
+                plx             ; restore X
+                plp             ; restore C
+
+                ; fall through to get_src_byte. 
+                .cerror *!=get_src_byte
+
+; must preserve X/Y/C
+get_src_byte: .block
+                bit ZX0_resume_state
+                bpl one_off     ; taken if 1-part unpack
+                bvs out_of_data ; taken if buffer empty
+
+got_data:
+                lda (ZX0_src)   ; fetch next input byte
+                inc ZX0_src+0   ; next input byte address
+                bne done        ; not out of bytes...
+
+                ; that was the last byte of the buffer. Set the buffer
+                ; empty flag for next time (which may not even come,
+                ; if this is the last byte of compressed data).
+                pha
+                lda #$40
+                tsb ZX0_resume_state
+                pla
+done:
+                rts
+
+one_off:
+                lda (ZX0_src)
+                inc ZX0_src+0
+                bne done
+                inc ZX0_src+1
+                rts
+
+out_of_data:
+                php             ; save C
+                phx             ; save X
+                phy             ; save Y
+
+                ldy #0
+save_stack_loop:
+                pla
+                sta stack_buf,y
+                iny
+                tsx
+                cpx entry_s
+                bne save_stack_loop
+                sty stack_buf_size
+
+                ; return to zx02_decomp's caller with ZX0_resume_state
+                ; as %11000000 (piecewise unpack; not first part).
+                rts
+                
+                .endblock
+
+copy_bytes: .block
+                ldy #0
+loop:
+                ; slightly prioritize throughput for copying from
+                ; pntr. this is where the compression comes from so
+                ; hopefully it'll be the commoner case.
+                bcs pntr_byte
+src_byte:
+                jsr get_src_byte
+                bra got_byte
+pntr_byte:
+                lda (pntr)
+                inc pntr+0
+                bne +
+                inc pntr+1
++
+got_byte:
+                sta (ZX0_dst),y
+                iny
+                dex
+                bne loop
+                tya
+                clc
+                beq carry ; taken if X was 0 on entry - 256 bytes were
+                          ; copied
+                adc ZX0_dst+0
+                sta ZX0_dst+0
+                bcc +
+carry:
+                inc ZX0_dst+1
++
+                asl bitr
+                rts
+                .endblock
+                .endblock
+
+                .endsection zx02_code
+
+                
