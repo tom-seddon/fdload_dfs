@@ -1,3 +1,4 @@
 $.SCREENS diff=bbcbasic
 $.ZX02TEST1 diff=bbcbasic
 $.READTRACK diff=bbcbasic
+$.ZX02TEST2 diff=bbcbasic

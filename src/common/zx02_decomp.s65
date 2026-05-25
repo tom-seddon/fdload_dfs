@@ -4,65 +4,65 @@ bitr: .fill 1
 ZX0_dst: .fill 2
 ZX0_src: .fill 2
 pntr: .fill 2
-
-; bit 7 (P) : 0=single part; 1=piecewise
-; bit 6 (X) : on entry: 0=first part; 1=subsequent part
-;             unpacking: 0=buffer not empty; 1=buffer empty
-;
-; N.B., single part unpacking only has a first part! It isn't valid
-; for ZX0_resume_state to be $40 on entry...
-ZX0_resume_state: .fill 1
+ZX0_saved_state_size: .fill 1
                 .endsection zx02_workspace_zp
 
                 .section zx02_workspace_main
 entry_s: .fill 1
-stack_buf_size: .fill 1
 stack_buf: .fill 12
                 .endsection zx02_workspace_main
 
+jsr_get_src_byte_addrs:=[]
+
+jsr_get_src_byte: .macro
+jsr_get_src_byte_addrs..=[*]
+                jsr get_src_byte
+                .endmacro
+                
                 .section zx02_code
 ;--------------------------------------------------
 ;
 ; Decompress ZX0 data (6502 optimized format) - slightly butchered
 ; version of zx02-small.asm.
 ;
-; One-off unpack:
+; Single part unpack. Unpack compressed data to a buffer.
 ;
-; 1. Set ZX0_resume_state to $00
+; 1. jsr prepare_decome_single_part
 ;
 ; 2. Set (ZX0_dest) to address to unpack to
 ;
 ; 3. Set (ZX0_src) to address to unpack from
 ;
-; 4. jsr full_decomp
+; 4. jsr decomp
 ;
 ; The data will be unpacked in one go, much as per the original ZX02
 ; routines.
 ;
-; Piecewise unpack:
+; Multi part unpack. Supply compressed data 256 bytes at a time.
 ;
 ; 1. Set (ZX0_dest) to address to unpack to. You're committed to this
 ; address once started! zx02 will look back into previously unpacked
 ; data, which needs to still be available
 ;
-; 2. Set ZX0_resume_state to $80 specifically
+; 2. jsr prepare_decomp_multi_part
 ;
 ; 3. Point (ZX0_src) at page-aligned first 256 bytes of packed data
 ;
-; 4. jsr full_decomp
+; 4. jsr decomp
 ;
-; On exit, test ZX0_resume_state.
+; On exit, test ZX0_saved_state_size.
 ;
-; If bit 7 set, supply next 256 bytes of data and go to step 3. Unlike
-; ZX0_dest, ZX0_src can be different each time. It has to be
-; page-aligned though (the LSB is used as a flag).
+; If non-zero, supply next 256 bytes of data and go to step 3.
+; (ZX0_src can be different for each part, though it must be
+; page-aligned)
 
-full_decomp: .block
+decomp: .block
                 tsx
                 stx entry_s
 
-                bit ZX0_resume_state
-                bvs resume      ; taken if resume data present
+                ; will be zero for first part
+                ldy ZX0_saved_state_size
+                bne resume
 
                 lda #$80
                 sta bitr
@@ -108,7 +108,7 @@ dzx0s_new_offset:
 ; Read elias code for high part of offset
                 inx
                 jsr   get_elias
-                beq   exit  ; Read a 0, signals the end
+                beq   decomp_done  ; Read a 0, signals the end
                 ; Decrease and divide by 2
                 dex
                 txa
@@ -116,7 +116,7 @@ dzx0s_new_offset:
                 sta   offset+1
 
                 ; Get low part of offset, a literal 7 bits
-                jsr   get_src_byte
+                .jsr_get_src_byte
 
                 ; Divide by 2
                 ror   a
@@ -144,7 +144,7 @@ get_elias:
                 bne   elias_skip1
 
                 ; Read new bit from stream
-                jsr   get_src_byte
+                .jsr_get_src_byte
                 ;sec   ; not needed, C=1 guaranteed from last bit
                 rol   a
                 sta   bitr
@@ -155,63 +155,48 @@ elias_skip1:
                 ; Got ending bit, stop reading with C=0
                 rts
 
-;-------------------------------------------------------------------------
+; ;-------------------------------------------------------------------------
 
-; hit end of data. indicate no resume.
-exit:
-                lsr ZX0_resume_state
-                rts
+; ; hit end of data. indicate no resume.
+; exit:
+;                 stz ZX0_saved_state_size
+;                 rts
                 
 ;-------------------------------------------------------------------------
 
 resume:
-                ldy stack_buf_size
 restore_stack_loop:
                 lda stack_buf-1,y
                 pha
                 dey
                 bne restore_stack_loop
 
-                ; turn %11000000 (piecewise unpack; not first part)
-                ; into %10000000 (piecewise unpack; buffer not empty)
-                asl ZX0_resume_state
-                
+                jsr prepare_decomp_multi_part
+
                 ply             ; restore Y
                 plx             ; restore X
                 plp             ; restore C
 
-                ; fall through to get_src_byte. 
-                .cerror *!=get_src_byte
+                .cerror *!=get_src_byte.multi_part
 
 ; must preserve X/Y/C
 get_src_byte: .block
-                bit ZX0_resume_state
-                bpl one_off     ; taken if 1-part unpack
-                bvs out_of_data ; taken if buffer empty
-
-got_data:
+                .page
+multi_part:
                 lda (ZX0_src)   ; fetch next input byte
                 inc ZX0_src+0   ; next input byte address
                 bne done        ; not out of bytes...
 
-                ; that was the last byte of the buffer. Set the buffer
-                ; empty flag for next time (which may not even come,
-                ; if this is the last byte of compressed data).
+                ; that was the last byte of the buffer. 
                 pha
-                lda #$40
-                tsb ZX0_resume_state
+                lda #<multi_part_empty
+                jsr repoint_get_src_byte
                 pla
 done:
                 rts
 
-one_off:
-                lda (ZX0_src)
-                inc ZX0_src+0
-                bne done
-                inc ZX0_src+1
-                rts
-
-out_of_data:
+; must preserve X/Y/C
+multi_part_empty:
                 php             ; save C
                 phx             ; save X
                 phy             ; save Y
@@ -224,12 +209,25 @@ save_stack_loop:
                 tsx
                 cpx entry_s
                 bne save_stack_loop
-                sty stack_buf_size
 
-                ; return to zx02_decomp's caller with ZX0_resume_state
-                ; as %11000000 (piecewise unpack; not first part).
+                ; there's always at least 3 bytes (P/X/Y) on the
+                ; stack, so the amount will always end up non-zero.
+                sty ZX0_saved_state_size
+
+                ; don't repoint get_src_byte - it overwrites
+                ; ZX0_saved_state_size. And besides, there's no need;
+                ; it can just as easily be done when resumed.
                 rts
-                
+
+; must preserve X/Y/C
+single_part:
+                lda (ZX0_src)
+                inc ZX0_src+0
+                bne done
+                inc ZX0_src+1
+                rts
+
+                .endpage
                 .endblock
 
 copy_bytes: .block
@@ -240,7 +238,7 @@ loop:
                 ; hopefully it'll be the commoner case.
                 bcs pntr_byte
 src_byte:
-                jsr get_src_byte
+                .jsr_get_src_byte
                 bra got_byte
 pntr_byte:
                 lda (pntr)
@@ -267,6 +265,23 @@ carry:
                 rts
                 .endblock
                 .endblock
+
+prepare_decomp_multi_part:
+                lda #<decomp.get_src_byte.multi_part
+                .byte $fc       ; 3-byte NOP (4 cycles)
+prepare_decomp_single_part:
+                lda #<decomp.get_src_byte.single_part
+repoint_get_src_byte:
+                ; should think about a table based approach at 6 - the
+                ; bytes occupied would be like 12+n for table vs 3n+1
+                ; for unrolled.
+                .cerror len(jsr_get_src_byte_addrs)>=6
+                .for _i=0,_i<len(jsr_get_src_byte_addrs),_i+=1
+                sta jsr_get_src_byte_addrs[_i]+1
+                .endfor
+decomp_done:
+                stz ZX0_saved_state_size
+                rts
 
                 .endsection zx02_code
 

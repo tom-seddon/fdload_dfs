@@ -11,8 +11,10 @@
 ;
 ; start?0 - zp address of ZX0_src
 ; start?1 - zp address of ZX0_dst
-; start?2 - zp address of ZX0_resume_state
-; start+3 - entry point to CALL/USR for full_decomp
+; start?2 - zp address of ZX0_saved_state_size
+; start+3 - entry point to CALL for decomp
+; start+6 - entry point to CALL for prepare_decomp_single_part
+; start+9 - entry point to CALL for prepare_decomp_multi_part
 
 *=$80
                 .dsection zx02_workspace_zp
@@ -21,8 +23,10 @@
 *=$2c00
                 .byte ZX0_src
                 .byte ZX0_dst
-                .byte ZX0_resume_state
-                jmp full_decomp
+                .byte ZX0_saved_state_size
+                jmp decomp
+                jmp prepare_decomp_single_part
+                jmp prepare_decomp_multi_part
                 
                 .dsection zx02_workspace_main
                 .dsection zx02_code
