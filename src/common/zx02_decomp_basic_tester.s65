@@ -1,9 +1,9 @@
 ; Build of zx02_decomp that's runnable from BASIC for testing
 ; purposes.
 ;
-; ZP workspace is in the $80...$8f area.
+; ZP workspace is in the $78...$84 area.
 ;
-; Code etc. is at $2c00...$2fff.
+; Code etc. is at $2c00...$2dff.
 ;
 ; A table of at the start of the binary provides some specific
 ; addresses, easily accessible from BASIC using the indirection
@@ -16,9 +16,9 @@
 ; start+6 - entry point to CALL for prepare_decomp_single_part
 ; start+9 - entry point to CALL for prepare_decomp_multi_part
 
-*=$80
+*=$78
                 .dsection zx02_workspace_zp
-                .cerror *>$90
+                .cerror *>$84
 
 *=$2c00
                 .byte ZX0_src
@@ -30,7 +30,7 @@
                 
                 .dsection zx02_workspace_main
                 .dsection zx02_code
-                .cerror *>$3000
+                .cerror *>$2e00
 
                 .include "zx02_decomp.s65"
                 

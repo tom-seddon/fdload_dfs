@@ -5,10 +5,10 @@ ZX0_dst: .fill 2
 ZX0_src: .fill 2
 pntr: .fill 2
 ZX0_saved_state_size: .fill 1
+entry_s: .fill 1
                 .endsection zx02_workspace_zp
 
                 .section zx02_workspace_main
-entry_s: .fill 1
 stack_buf: .fill 12
                 .endsection zx02_workspace_main
 

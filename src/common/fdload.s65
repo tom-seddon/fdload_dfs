@@ -1,0 +1,289 @@
+;-------------------------------------------------------------------------
+;
+; All the disk stuff is asynchronous and runs in the background.
+;
+; bit 7 of fdload_busy indicates whether a request is ongoing. Test
+; with BIT.
+;
+; New requests block until the old one is complete, so you can issue
+; them back to back if there's nothing else to do meanwhile.
+;
+;-------------------------------------------------------------------------
+
+
+; Master 128 floppy disk hardware
+
+                .virtual $fe24
+fdc_control: .block
+drive0=1
+drive1=2
+not_reset=4
+side2=16
+not_dden=32
+                .endblock
+                .endvirtual                
+
+                .virtual $fe28
+fdc: .block
+status:
+command:
+                .fill 1
+track:
+                .fill 1
+sector:
+                .fill 1
+data:
+                .fill 1
+                .endblock
+                .endvirtual
+
+; 0xxx = enable spin-up sequence
+; x1xx = verify dest track
+; xx01 = 12 ms step time
+;
+; (regarding the step time, it seems the data sheet is wrong, and the
+; 12 ms step time applies to both 1770 and 1772. This is the slowest
+; step time common to both, so hopefully the safest option.)
+type_i_flags=%0101
+
+; 0xxx = enable spin-up sequence
+; x0xx = no settling delay
+; xx00 = (irrelevant for read sector)
+type_ii_flags=%0000
+                
+;-------------------------------------------------------------------------
+
+                .section fdload_workspace_zp
+
+; BR------
+; 
+; bit 7, B: set if busy
+; 
+; bit 6, R: (only relevant if B set) set if a read should be issued
+; when current command done
+fdload_flags: .fill 1
+fdload_addr_msb: .fill 1
+fdload_side: .fill 1
+fdload_track: .fill 1
+fdload_sector: .fill 1
+fdload_nmi_tmpa: .fill 1
+fdload_nmi_dest: .fill 2
+                .endsection
+
+;-------------------------------------------------------------------------
+
+BRA_rel=$80
+NOP_imm=$02
+NOP_xxx=$03
+NOP_abs=$fc
+RTI_imp=$40
+STA_zpg=$85
+                
+                .section fdload_code
+                
+;-------------------------------------------------------------------------
+; 
+; Code for the NMI region - to be run from $d00, one way or another.
+;
+; First byte to be overwritten to select the actual behaviour:
+;
+; Store data: NOP_imm
+;
+; Unset busy (the default): BRA_rel
+
+nmi_routine: .block
+                .logical $d00
+start:
+                bra unset_busy
+                sta fdload_nmi_tmpa
+                lda fdc.data
+                sta (fdload_nmi_dest)
+                inc fdload_nmi_dest+0
+                bne +
+                jsr nmi_routine_unset_busy
++
+                lda fdload_nmi_tmpa
+                rti
+unset_busy:
+                bit fdload_flags ; V=1 if a read command should be issued
+
+                lsr fdload_flags
+                bvc +             ; taken if no read command
+                sta fdload_nmi_tmpa
+                jsr fdload_issue_read
+                ; (the busy flag is set again now)
+                lda fdload_nmi_tmpa
++
+                rti
+                .endlogical
+                .endblock
+
+;-------------------------------------------------------------------------
+
+force_interrupt:
+                lda #%11010000  ; Type IV Force Interrupt
+                sta fdc.command
+                lda #13
+; Cycles = 2N+3(N-1)+2 = 2+2N+3N-3 = 2+5N-3 = 5N-1
+;
+; (N=13 = 64 cycles = 32 microseconds)
+delay:
+-
+                dec a
+                bne -
+                rts
+
+;-------------------------------------------------------------------------
+; 
+; Initialise floppy disk stuff. Do a 1770 restore. Unlike most
+; requests, waits for completion.
+; 
+fdload_init:
+                stz fdload_side
+                jsr fdload_prepare
+                lda #%00000000|type_i_flags ; Type I Restore
+                clc                         ; no subsequent command
+                jsr fdload_issue_command
+fdload_wait_not_busy:
+                bit fdload_flags ; N=1 if busy
+                bmi fdload_wait_not_busy ; taken if busy
+                rts
+
+;-------------------------------------------------------------------------
+;
+; Seek to the given track.
+;
+; entry: ?fdload_track = track to seek to
+;
+; exit: (busy)
+; 
+fdload_seek:
+                jsr fdload_wait_not_busy
+                jsr nmi_routine_unset_busy
+                clc                         ; no subsequent command
+fdload_issue_seek:
+                lda fdload_track
+                sta fdc.data
+                lda #%00010000|type_i_flags ; Type I Seek
+
+; Issue FDC command.
+;
+; entry: A = FDC command to initiate
+;        C=1 if a read should be issued when it's done
+;
+; preserves: X/Y
+fdload_issue_command:
+                ror fdload_flags ; flags=Rxxxxxxx
+                sec              ; flag B=1
+                ror fdload_flags ; flags=BRxxxxxx
+                sta fdc.command
+                rts
+
+;-------------------------------------------------------------------------
+;
+; Read 1 sector from disk.
+;
+; entry: ?fdload_track = track to read from 
+;        ?fdload_sector = sector to read from
+;        ?fdload_addr_msb = MSB of buffer address
+;
+; exit: (busy)
+; 
+fdload_read1:
+                jsr fdload_wait_not_busy
+                jsr fdload_prepare_control_register
+
+                ; prepare for read: set NMI routine dest address and
+                ; FDC sector register. Must consume all arguments at
+                ; this point: the routine will return immediately but
+                ; it's ok for the caller to immediately set up another
+                ; one (which will get stuck on fdload_wait_not_busy).
+                stz fdload_nmi_dest+0
+                lda fdload_addr_msb
+                sta fdload_nmi_dest+1
+                
+                lda fdload_sector
+                sta fdc.sector
+
+                ; If a seek required, start there.
+                lda fdload_track
+                cmp fdc.track
+                beq fdload_issue_read ; taken if no seek required
+
+                sec             ; indicate subsequent read command
+                bra fdload_issue_seek
+
+fdload_issue_read:
+                ; *called from the NMI routine* - must use A only.
+                
+                ; put the NMI routine in the store data state
+                lda #NOP_imm
+                sta $d00
+                
+                lda #%10000000|type_ii_flags ; Type II Read Sector (1 sector)
+                clc                          ; no subsequent command
+                bra fdload_issue_command
+
+nmi_routine_unset_busy:
+                lda #BRA_rel
+                sta $d00
+                rts
+
+fdload_prepare_control_register:
+                lda fdload_side
+                beq +
+                lda #16         ; select side 1
++
+                ora #1|4|32     ; drive 0; not reset; not double
+                                ; density
+                sta fdc_control
+                rts
+
+; Reset 1770, prepare 1770 control register, and put NMI routine in
+; the unset_busy state.
+fdload_prepare: .block
+                jsr force_interrupt
+                jsr fdload_prepare_control_register
+                
+                .cerror size(nmi_routine)>128
+                ldx #size(nmi_routine)-1
+loop:
+                lda nmi_routine,x
+                sta $d00,x
+                dex
+                bpl loop
+                rts
+                .endblock
+
+fdload_next_address: .block
+                lda fdload_sector
+                inc fdload_sector
+                cmp #9
+                bne +
+                stz fdload_sector
+                lda fdload_track
+                cmp #79
+                beq +
+                inc fdload_track
++                
+                rts
+                .endblock
+
+; Load sector(s).
+;
+; 0. jsr fdload_prepare
+;
+; 1. Set fdload_side, fdload_track and fdload_sector to appropriate
+; address
+;
+; 2. Set fdload_dest to page-aligned address of buffer to load sector
+; to
+;
+; 5. jsr fdload_read_sector
+;
+; fdload_read_sector will update track/sector to point to the next
+; sector (clamping at track 79). The 
+
+
+; general stuff.
+                .endsection

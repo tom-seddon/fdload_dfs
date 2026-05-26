@@ -1,0 +1,42 @@
+; Build of fdload that's runnable from BASIC for testing purposes.
+;
+; ZP workspace is in the $84...$8f area.
+;
+; Code etc. is at $2e00...$2fff.
+;
+; A table at the start of the binary provides some addresses and entry
+; points:
+;
+; +0 - fdload_init
+; ?3 - fdload_busy
+; ?4 - fdload_addr_msb
+; ?5 - fdload_side
+; ?6 - fdload_track
+; ?7 - fdload_sector
+; +8 - fdload_next_address
+; +11 - fdload_seek
+; +14 - fdload_read1
+; +17 - fdload_wait_not_busy
+
+*=$80
+                .dsection fdload_workspace_zp
+                .cerror *>$90
+
+*=$2e00
+                jmp fdload_init
+                .byte fdload_flags
+                .byte fdload_addr_msb
+                .byte fdload_side
+                .byte fdload_track
+                .byte fdload_sector
+                jmp fdload_next_address
+                jmp fdload_seek
+                jmp fdload_read1
+                jmp fdload_wait_not_busy
+                
+                .dsection fdload_code
+                
+                .cerror *>$3000
+
+                .include "fdload.s65"
+                
