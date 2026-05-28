@@ -1,0 +1,21 @@
+; +0 - dfs_convert_location
+; !3 - dfs_metadata
+; ?7 - dfs_name
+; ?8 - dfs_cat_msb
+
+*=$60
+                .dsection dfs_workspace_zp
+                .cerror *>$64
+
+*=$2a00
+                jmp dfs_find_entry.convert_location
+                .dword dfs_metadata
+                .byte dfs_name
+                .byte dfs_cat_msb
+                
+                .dsection dfs_workspace_main
+                .dsection dfs_code
+                
+                .cerror *>$2c00
+
+                .include "dfs.s65"

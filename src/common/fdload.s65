@@ -255,7 +255,18 @@ loop:
                 rts
                 .endblock
 
-fdload_next_address: .block
+;-------------------------------------------------------------------------
+;
+; Advance to next sector.
+;
+; It won't advance past track 79.
+;
+; entry: ?fdload_track = current track
+;        ?fdload_sector = current sector
+;
+; exit: ?fdload_track = new track
+;       ?fdload_sector = new sector
+fdload_next_location: .block
                 lda fdload_sector
                 inc fdload_sector
                 cmp #9
@@ -269,21 +280,4 @@ fdload_next_address: .block
                 rts
                 .endblock
 
-; Load sector(s).
-;
-; 0. jsr fdload_prepare
-;
-; 1. Set fdload_side, fdload_track and fdload_sector to appropriate
-; address
-;
-; 2. Set fdload_dest to page-aligned address of buffer to load sector
-; to
-;
-; 5. jsr fdload_read_sector
-;
-; fdload_read_sector will update track/sector to point to the next
-; sector (clamping at track 79). The 
-
-
-; general stuff.
                 .endsection

@@ -29,7 +29,7 @@
                 .byte fdload_side
                 .byte fdload_track
                 .byte fdload_sector
-                jmp fdload_next_address
+                jmp fdload_next_location
                 jmp fdload_seek
                 jmp fdload_read1
                 jmp fdload_wait_not_busy

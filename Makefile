@@ -79,6 +79,9 @@ build: _build_dependencies
 	$(TASS) -L "$(BUILD)/fdload_basic_tester.lst" -o "$(BUILD)/fdload_basic_tester.prg" "src/common/fdload_basic_tester.s65"
 	$(PYTHON) "$(BEEB_BIN)/prg2bbc.py" --io "$(BUILD)/fdload_basic_tester.prg" "$(BEEBLINK)/Z/$$.FDLOAD"
 
+	$(TASS) -L "$(BUILD)/dfs_basic_tester.lst" -o "$(BUILD)/dfs_basic_tester.prg" "src/common/dfs_basic_tester.s65"
+	$(PYTHON) "$(BEEB_BIN)/prg2bbc.py" --io "$(BUILD)/dfs_basic_tester.prg" "$(BEEBLINK)/Z/$$.DFS"
+
 ##########################################################################
 ##########################################################################
 

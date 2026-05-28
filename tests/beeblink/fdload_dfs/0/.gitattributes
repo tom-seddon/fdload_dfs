@@ -4,3 +4,5 @@ $.READTRACK diff=bbcbasic
 $.ZX02TEST2 diff=bbcbasic
 $.RESET diff=bbcbasic
 $.FDLOADTEST diff=bbcbasic
+$.DISKLOC diff=bbcbasic
+$.DFSTEST1 diff=bbcbasic

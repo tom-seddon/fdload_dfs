@@ -111,10 +111,16 @@ And 101 rows of 320 would need a spicy start address of $01C0.
 | $206  | Entry point           |                                         |
 | $208  | Entry point           |                                         |
 | $20A  | Entry point           |                                         |
-| $20c  |                       |                                         |
+| $20c  | ???                   |                                         |
 | $258  | OS memory clear flags | Best to keep this set to $03            |
-| $259  |                       |                                         |
+| $259  | ???                   |                                         |
 
 Keeping the OS memory clear flags set to 3 means there'll be a memory
 clear on BREAK, and the OS won't get confused by whatever junk has
 been written into its workspace. Makes things a bit tidier.
+
+The entry points are designed to be called with =JSR=, rather than
+being vectors. Only 2 bytes needed in each case, since 65c02 =BRA= can
+be used.
+
+(Or maybe some other arrangement would be better? To be continued.)
