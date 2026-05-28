@@ -1,9 +1,10 @@
+; https://mdfs.net/Docs/Comp/Disk/Format/DFS
+;
 ;-------------------------------------------------------------------------
 
                 .section dfs_workspace_zp
 dfs_name: .fill 2
 dfs_cat: .fill 2
-dfs_cat_msb=dfs_cat+1
                 .endsection dfs_workspace_zp
 
 ;-------------------------------------------------------------------------
@@ -30,7 +31,7 @@ dfs_sector: .fill 1
 ;
 ; Find DFS catalogue entry details for name.
 ;
-; entry: ?dfs_cat_msb = MSB of address of page-aligned DFS catalogue
+; entry: (dfs_cat) = pointer to 512 byte DFS catalogue data
 ;        (dfs_name) = pointer to name to search for
 ;
 ; exit: C=0 if name not found
@@ -39,10 +40,10 @@ dfs_sector: .fill 1
 dfs_find_entry: .block
                 ; reset name buffer, with some +1s so that Y=0 at the
                 ; end.
-                ldy #7+1
+                ldy #7
                 lda #' '
 reset_name_buffer_loop:
-                sta dfs_name_buffer+1,y
+                sta dfs_name_buffer-1,y
                 dey
                 bne reset_name_buffer_loop
                 
@@ -65,12 +66,22 @@ copied_name:
                 ldy #8
 compare_names_loop:
                 ; out of cat entries?
-                tya             ; A=offset into catalogue
-                ldy #5          ; Y=offset of end index
-                cmp (dfs_cat),y ; are we there yet?
-                bcs name_not_found ; taken if out of catalogue
-                tay             ; Y=offset into catalogue
-                
+                inc dfs_cat+1      ; switch to metadata sector
+                phy                ; save offset
+                tya                ; A=offset
+
+                ; (The appropriate comparison is offset<=end, which is
+                ; presumably convenient for the DFS code but mildly
+                ; annoying here. So check for offset-1>=end instead.)
+                dec a              ; A=offset-1
+                ldy #5             ; Y=offset of end index
+                cmp (dfs_cat),y    ; are we there yet? C=1 if done
+                dec dfs_cat+1      ; switch back to names sector
+                ply                ; Y=offset
+                bcs name_not_found ; taken if A>M - out of catalogue
+
+compare_name:
+                phy             ; save offset
                 ldx #0
 compare_name_loop:
                 lda (dfs_cat),y
@@ -84,10 +95,8 @@ compare_name_loop:
                 bne compare_name_loop ; taken if more chars to go
 
                 ; name matched.
-                jsr swap_cats
-                tya
-                and #+~7
-                tay
+                inc dfs_cat+1   ; switch to metadata sector
+                ply             ; Y=offset
 
                 ldx #0
 copy_metadata_loop:
@@ -97,6 +106,8 @@ copy_metadata_loop:
                 inx
                 cpx #8
                 bne copy_metadata_loop
+
+                dec dfs_cat+1   ; switch back to names sector
 
 convert_location:
                 ; convert DFS catalogue metadata LBA-type disk
@@ -137,8 +148,7 @@ next_track:
                 bra loop
 
 next_name:
-                tya
-                and #+~7
+                pla             ; A=offset
                 clc
                 adc #8
                 tay
@@ -156,12 +166,6 @@ toupper:
                 bcs +
                 and #$df
 +
-                rts
-
-swap_cats:
-                lda dfs_cat+1
-                eor #1
-                sta dfs_cat+1
                 rts
 
                 .endblock

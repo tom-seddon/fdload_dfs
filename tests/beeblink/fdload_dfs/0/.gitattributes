@@ -6,3 +6,4 @@ $.RESET diff=bbcbasic
 $.FDLOADTEST diff=bbcbasic
 $.DISKLOC diff=bbcbasic
 $.DFSTEST1 diff=bbcbasic
+$.MKFILES diff=bbcbasic
