@@ -1,6 +1,10 @@
 _SRC:=../beeblink/fdload_dfs/1
 _DEST:=../beeblink/fdload_dfs/Z
-_PACK=$(ZX02TOOL) pack "$(_SRC)/$$.SCREEN$(1)" -o "$(_DEST)/Z.SCREEN$(1)"
+_PACK=$(ZX02TOOL) pack "$(_SRC)/$$.SCR$(1)" -o "$(_DEST)/Z.SCR$(1)"
+
+ifndef SHELLCMD
+$(error to be invoked from top-level Makefile only)
+endif
 
 .PHONY:test_zx02tool
 test_zx02tool:
