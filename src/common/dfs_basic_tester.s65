@@ -2,7 +2,7 @@
 ; (3) - dfs_metadata
 ; ?5 - dfs_name
 ; ?6 - dfs_cat
-; +7 - dfs_find_entry
+; +7 - dfs_copy_name then dfs_find_entry
 ; +10 - toupper
 
 ; $60 is in practice safe for BASIC 4.
@@ -15,11 +15,22 @@
                 .word dfs_metadata
                 .byte dfs_name
                 .byte dfs_cat
-                jmp dfs_find_entry
+                jmp dfs_copy_name_and_find_entry
                 jmp dfs_find_entry.toupper
                 
                 .dsection dfs_workspace_main
+                .dsection dfs_code_main
                 .dsection dfs_code
+
+                ; oops. I had to change stuff around and this was the
+                ; easiest way of not having to fix up the BASIC test
+                ; code.
+dfs_copy_name_and_find_entry:
+                jsr dfs_copy_name
+                bcc +
+                jsr dfs_find_entry
++
+                rts
                 
                 .cerror *>$2c00
 

@@ -21,7 +21,60 @@ dfs_exec: .fill 2
 dfs_length: .fill 2
 dfs_track: .fill 1
 dfs_sector: .fill 1
+dfs_dir: .fill 1
                 .endsection
+
+;-------------------------------------------------------------------------
+
+                .section dfs_code_main
+
+;-------------------------------------------------------------------------
+;
+; Copy name into dfs name buffer.
+;
+; entry: (dfs_name),y = pointer to name
+; exit: C=1 if ok, and dfs name buffer initialised
+;       C=0 if invalid name
+dfs_copy_name: .block
+                ; reset name buffer, with some +1s so that X=0 at the
+                ; end.
+                ldx #7
+                lda #' '
+reset_name_buffer_loop:
+                sta dfs_name_buffer-1,x
+                dex
+                bne reset_name_buffer_loop
+
+                ; save off file name. do some basic checks.
+                ;
+                ; the name case isn't normalized at this point. Save a
+                ; few main RAM bytes by doing all that stuff from the
+                ; sideways RAM sections.
+copy_name_loop:
+                lda (dfs_name),y
+                cmp #13
+                beq copied_name
+                cpx #8
+                beq bad_name ; taken if supplied name is impossibly
+                             ; long
+                sta dfs_name_buffer,x
+                iny
+                inx
+                cpx #7
+                bne copy_name_loop
+copied_name:
+                rts             ; exit with C=1
+
+bad_name:
+                clc
+                rts
+                .endblock
+
+;-------------------------------------------------------------------------
+
+                .endsection dfs_code_main
+
+;-------------------------------------------------------------------------
 
 ;-------------------------------------------------------------------------
 
@@ -32,36 +85,19 @@ dfs_sector: .fill 1
 ; Find DFS catalogue entry details for name.
 ;
 ; entry: (dfs_cat) = pointer to 512 byte DFS catalogue data
-;        (dfs_name) = pointer to name to search for
+;        dfs name buffer = name to search for
 ;
 ; exit: C=0 if name not found
 ;       C=1 if name found
-; 
 dfs_find_entry: .block
-                ; reset name buffer, with some +1s so that Y=0 at the
-                ; end.
-                ldy #7
-                lda #' '
-reset_name_buffer_loop:
-                sta dfs_name_buffer-1,y
-                dey
-                bne reset_name_buffer_loop
-                
-                ; save off file name. do some basic checks.
-copy_name_loop:
-                lda (dfs_name),y
-                cmp #13
-                beq copied_name
+                ldx #6
+toupper_loop:
+                lda dfs_name_buffer,x
                 jsr toupper
-                cpy #8
-                beq name_not_found ; taken if supplied name is
-                                   ; impossibly long
-                sta dfs_name_buffer,y
-                iny
-                cpy #7
-                bne copy_name_loop
-copied_name:
-
+                sta dfs_name_buffer,x
+                dex
+                bpl toupper_loop
+                
                 ; start searching from entry 0.
                 ldy #8
 compare_names_loop:
@@ -94,20 +130,25 @@ compare_name_loop:
                 cpx #7
                 bne compare_name_loop ; taken if more chars to go
 
-                ; name matched.
-                inc dfs_cat+1   ; switch to metadata sector
                 ply             ; Y=offset
-
                 ldx #0
 copy_metadata_loop:
+                inc dfs_cat+1   ; switch to metadata sectorl
+                
                 lda (dfs_cat),y
                 sta dfs_metadata,x
-                iny
-                inx
-                cpx #8
-                bne copy_metadata_loop
 
                 dec dfs_cat+1   ; switch back to names sector
+
+                ; store dir. Just do the same thing each time and
+                ; it'll get the right value eventually...
+                lda (dfs_cat),y
+                sta dfs_dir
+                
+                inx
+                iny
+                cpx #8
+                bne copy_metadata_loop
 
 convert_location:
                 ; convert DFS catalogue metadata LBA-type disk
@@ -167,9 +208,10 @@ toupper:
                 and #$df
 +
                 rts
-
                 .endblock
                 
+;-------------------------------------------------------------------------
+
                 .endsection dfs_code
 
 ;-------------------------------------------------------------------------

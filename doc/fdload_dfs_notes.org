@@ -106,7 +106,7 @@ And 101 rows of 320 would need a spicy start address of $01C0.
 | Start | What                  | Notes                                   |
 |-------+-----------------------+-----------------------------------------|
 | $200  | Entry point           |                                         |
-| $202  | Entry point           |                                         |
+| $202  | BRKV                  | would be nice if this did something     |
 | $204  | IRQ1V                 | IRQ handler preamble does =JMP ($0204)= |
 | $206  | Entry point           |                                         |
 | $208  | Entry point           |                                         |

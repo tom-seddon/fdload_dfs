@@ -1,0 +1,258 @@
+                .include '../../dependencies/beeb/include/beeb.s65'
+                .include '../shared_constants.asm'
+                .include 'dfs.s65'
+                .include 'zx02_decomp.s65'
+                .include 'fdload.s65'
+
+;-------------------------------------------------------------------------
+
+*=$70
+                .dsection loader_zp
+                .cerror *>$90
+
+*=$e0
+                .dsection zx02_workspace_zp
+                .dsection fdload_workspace_zp
+                .dsection dfs_workspace_zp
+                .cerror *>$fc
+
+*=$1900
+                .dsection loader_code
+
+                ; Stuff to be copied into page 2.
+page2_code:
+                .logical $200
+                .dsection page2_code
+                .cerror *>$258
+*=$258
+                .byte 3         ; force memory clear on BREAK
+                .cerror *>$2a1
+*=$2a1
+                .fill 16,0      ; empty ROM information table
+                .cerror *>$300
+                .endlogical
+
+rom_contents:
+                .logical $b800
+
+loader_ram_contents: .block
+unrelocated_start:
+                .logical $d00-(fdload_ram_code-relocated_start)
+                .cerror *<$c00
+relocated_start:
+                .dsection zx02_code
+                .dsection zx02_workspace_main
+                .dsection dfs_workspace_main
+fdload_ram_code:
+                .dsection fdload_code
+                .dsection dfs_code_main
+                .cerror *>$e00
+                .endlogical
+                .endblock
+                
+                .dsection loader_rom_code
+                .dsection dfs_code
+                ; cat buffers live at the end of the ROM.
+cat_buffers:
+                .cerror *>$c000-$400
+                .endlogical
+                
+
+                ; put BSS last
+cat_buffers_tmp:
+                .fill 1024
+                .cerror *>$3000
+
+;-------------------------------------------------------------------------
+
+                .section loader_zp
+                .endsection loader_zp
+
+;-------------------------------------------------------------------------
+
+                .section loader_code
+
+                lda acccon
+                and #%11000000
+                beq got_master_hw
+
+                brk
+                .byte 255
+                .text 'Requires Master 128/Compact/Olivetta PC 128 S',0
+
+not_ram_error:
+                brk
+                .byte 255
+                .text 'Must have sideways RAM in banks 4-7',0
+
+                
+got_master_hw:
+                lda $f4
+                pha
+                
+                ldx #4
+check_swram:
+                jsr romx
+                stx $f4
+                stx romsel
+
+                lda $8008       ; binary version number
+                tay             ; save old value
+                eor #$ff
+                sta $8008       ; attempt to modify
+                cpy $8008       ; Z=0 if it changed
+                sty $8008       ; restore old value
+                bne not_ram_error ; taken if not RAM
+                inx
+                cpx #8
+                bne check_swram
+
+                ldx #framework_bank
+                jsr romx
+
+                lda #0
+                jsr read_cat
+
+                lda #2
+                jsr read_cat
+
+                rts
+
+romx:
+                stx $f4
+                stx romsel
+                rts
+
+;-------------------------------------------------------------------------
+
+read_cat:
+                sta read_catalogue_block.drive
+                ldx #<read_catalogue_block
+                ldy #>read_catalogue_block
+                lda #$7f        ; OSWORD read disk sectors
+                jsr osword
+                lda read_catalogue_block.result
+                bne disk_error
+
+                lda read_catalogue_block.addr+1
+                inc a
+                inc a
+                sta read_catalogue_block.addr+1
+                
+                rts
+
+disk_error:
+                pha
+                jsr nybble
+                sta disk_error_code+1
+                pla
+                lsr a
+                lsr a
+                lsr a
+                lsr a
+                jsr nybble
+                sta disk_error_code+0
+                brk
+                .byte 255
+                .text 'Disk error: &'
+                
+disk_error_code:
+                .text 'xx',0
+
+nybble:
+                and #$0f
+                sed
+                cmp #10
+                adc #$30
+                cld
+                rts
+
+read_catalogue_block: .block
+drive:
+                .byte 0         ; drive #
+addr:
+                .dword cat_buffers_tmp
+                .byte 3
+                .byte $53       ; read
+                .byte 0         ; track
+                .byte 0         ; sector
+                .byte %00100000|2 ; 2 x 256-byte sectors
+result:
+                .byte 0           ; result
+                .endblock
+                .endsection loader_code
+
+;-------------------------------------------------------------------------
+
+                .section page2_code
+
+                .cerror *!=loader_load_file
+                bra do_loader_load_file
+
+                .cerror *!=brkv,format('$%04x',*)
+                .word default_brkv_handler
+
+                .cerror *!=irq1v
+                .word default_irq1v_handler
+
+do_loader_load_file:
+                phy
+                
+                jsr select_framework_bank
+
+                jsr loader_rom.copy_in
+
+                sty romsel
+
+                ply
+
+                jmp loader_load_file
+
+default_irq1v_handler:
+                rti
+
+default_brkv_handler:
+                jmp default_brkv_handler
+
+select_framework_bank:
+                ldy romsel
+                lda #framework_bank
+                sta romsel
+                rts
+                
+                .endsection
+
+;-------------------------------------------------------------------------
+
+                .section loader_rom_code
+
+loader_rom: .block
+
+;-------------------------------------------------------------------------
+;
+; Copy loader code into main RAM.
+;
+; Preserves: Y
+copy_in: .block
+                ldx #0
+loop:
+num_pages=>(size(loader_ram_contents)+255)
+                .cerror num_pages<2 ; need a rethink if this hits...
+                .for page=0,page<num_pages,page+=1
+                .block
+                .if page<num_pages-1
+_offset=page*256
+                .else
+_offset=size(loader_ram_contents)-256
+                .endif
+                lda loader_ram_contents.unrelocated_start+_offset,x
+                sta loader_ram_contents.relocated_start+_offset,x
+                .endblock
+                .endfor
+                inx
+                bne loop
+                rts
+                .endblock
+                .endblock
+                .endsection
+                
