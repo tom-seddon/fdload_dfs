@@ -124,3 +124,20 @@ being vectors. Only 2 bytes needed in each case, since 65c02 =BRA= can
 be used.
 
 (Or maybe some other arrangement would be better? To be continued.)
+
+** =BRK= support
+
+The original plan/hope was that BRK could be somehow made to work for
+debugging purposes. There's a loop in the MOS that goes through the
+ROMs and tries to call their service entry points, but what if the ROM
+table were zeroed out? Maybe it could be made to work! It'd find no
+valid ROMs and skip them all.
+
+Sadly the standard BRK handling always calls ROM 15, and ROM 15
+handles the BRK service call, and does a bunch of stuff to close the
+*MOVE handles. Which is just going to make an unholy mess.
+
+Safest to just do nothing, and you'll have to deal with any surprise
+BRKs in an emulator.
+
+* eof

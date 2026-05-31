@@ -61,7 +61,7 @@ TASS_EXE:=$(BIN)/64tass
 # How to run tools. May include command line options.
 ZX02:=$(ZX02_EXE)
 BEEBASM:=$(BEEBASM_EXE)
-TASS:=$(TASS_EXE) -Wall --case-sensitive --cbm-prg $(if $(VERBOSE),,--quiet) --long-branch --m65c02 --verbose-list
+TASS:=$(TASS_EXE) -Wall --case-sensitive $(if $(VERBOSE),,--quiet) --long-branch --m65c02 --verbose-list
 ZX02TOOL:=$(PYTHON) "$(BIN)/zx02tool.py"
 export ZX02
 export BEEBASM
@@ -73,24 +73,74 @@ export ZX02TOOL
 
 .PHONY:build
 build: _build_dependencies
-	$(TASS) -L "$(BUILD)/zx02_decomp_basic_tester.lst" -o "$(BUILD)/zx02_decomp_basic_tester.prg" "src/common/zx02_decomp_basic_tester.s65"
+	$(SHELLCMD) mkdir "$(BUILD)" "$(BEEBLINK)/Z"
+
+	$(TASS) --cbm-prg -L "$(BUILD)/zx02_decomp_basic_tester.lst" -o "$(BUILD)/zx02_decomp_basic_tester.prg" "src/common/zx02_decomp_basic_tester.s65"
 	$(PYTHON) "$(BEEB_BIN)/prg2bbc.py" --io "$(BUILD)/zx02_decomp_basic_tester.prg" "$(BEEBLINK)/Z/$$.ZX02"
 
-	$(TASS) -L "$(BUILD)/fdload_basic_tester.lst" -o "$(BUILD)/fdload_basic_tester.prg" "src/common/fdload_basic_tester.s65"
+	$(TASS) --cbm-prg -L "$(BUILD)/fdload_basic_tester.lst" -o "$(BUILD)/fdload_basic_tester.prg" "src/common/fdload_basic_tester.s65"
 	$(PYTHON) "$(BEEB_BIN)/prg2bbc.py" --io "$(BUILD)/fdload_basic_tester.prg" "$(BEEBLINK)/Z/$$.FDLOAD"
 
-	$(TASS) -L "$(BUILD)/dfs_basic_tester.lst" -o "$(BUILD)/dfs_basic_tester.prg" "src/common/dfs_basic_tester.s65"
+	$(TASS) --cbm-prg -L "$(BUILD)/dfs_basic_tester.lst" -o "$(BUILD)/dfs_basic_tester.prg" "src/common/dfs_basic_tester.s65"
 	$(PYTHON) "$(BEEB_BIN)/prg2bbc.py" --io "$(BUILD)/dfs_basic_tester.prg" "$(BEEBLINK)/Z/$$.DFS"
 
-	$(TASS) -L "$(BUILD)/loader.lst" -o "$(BUILD)/loader.prg" "src/common/loader.s65"
-	$(PYTHON) "$(BEEB_BIN)/prg2bbc.py" --io "$(BUILD)/loader.prg" "$(BEEBLINK)/Z/$$.LOADER"
+	$(TASS) --nostart -L "$(BUILD)/framework_bank.lst" -o "$(BUILD)/framework_bank.dat" "src/common/framework_bank.s65" --labels-root=framework_bank_exports "--labels=$(BUILD)/framework_bank.exports.s65"
+	$(ZX02TOOL) pack "$(BUILD)/framework_bank.dat" -o "$(BUILD)/framework_bank.dat.zx02"
+
+	$(TASS) --nostart -L "$(BUILD)/framework_page02.lst" -o "$(BUILD)/framework_page02.dat" "src/common/framework_page02.s65"
+	$(ZX02TOOL) pack "$(BUILD)/framework_page02.dat" -o "$(BUILD)/framework_page02.dat.zx02"
+
+	$(TASS) --cbm-prg -L "$(BUILD)/boot.lst" -o "$(BUILD)/boot.prg" "src/common/boot.s65"
+	$(PYTHON) "$(BEEB_BIN)/prg2bbc.py" --io "$(BUILD)/boot.prg" "$(BEEBLINK)/Z/$$.!BOOT"
+
+	$(ZX02TOOL) pack "$(BEEBLINK)/1/$$.SCR0" -o "$(BEEBLINK)/Z/Z.SCR0"
+	$(ZX02TOOL) pack "$(BEEBLINK)/1/$$.SCR1" -o "$(BEEBLINK)/Z/Z.SCR1"
+	$(ZX02TOOL) pack "$(BEEBLINK)/1/$$.SCR2" -o "$(BEEBLINK)/Z/Z.SCR2"
+	$(ZX02TOOL) pack "$(BEEBLINK)/1/$$.SCR3" -o "$(BEEBLINK)/Z/Z.SCR3"
+	$(ZX02TOOL) pack "$(BEEBLINK)/1/$$.SCR4" -o "$(BEEBLINK)/Z/Z.SCR4"
+	$(ZX02TOOL) pack "$(BEEBLINK)/1/$$.SCR5" -o "$(BEEBLINK)/Z/Z.SCR5"
+	$(ZX02TOOL) pack "$(BEEBLINK)/1/$$.SCR6" -o "$(BEEBLINK)/Z/Z.SCR6"
+	$(ZX02TOOL) pack "$(BEEBLINK)/1/$$.SCR7" -o "$(BEEBLINK)/Z/Z.SCR7"
+	$(ZX02TOOL) pack "$(BEEBLINK)/1/$$.SCR8" -o "$(BEEBLINK)/Z/Z.SCR8"
+	$(ZX02TOOL) pack "$(BEEBLINK)/1/$$.SCR9" -o "$(BEEBLINK)/Z/Z.SCR9"
+	$(ZX02TOOL) pack "$(BEEBLINK)/1/$$.SCR10" -o "$(BEEBLINK)/Z/Z.SCR10"
+	$(ZX02TOOL) pack "$(BEEBLINK)/1/$$.SCR11" -o "$(BEEBLINK)/Z/Z.SCR11"
+	$(ZX02TOOL) pack "$(BEEBLINK)/1/$$.SCR12" -o "$(BEEBLINK)/Z/Z.SCR12"
+	$(ZX02TOOL) pack "$(BEEBLINK)/1/$$.SCR13" -o "$(BEEBLINK)/Z/Z.SCR13"
+	$(ZX02TOOL) pack "$(BEEBLINK)/1/$$.SCR14" -o "$(BEEBLINK)/Z/Z.SCR14"
+	$(ZX02TOOL) pack "$(BEEBLINK)/1/$$.SCR15" -o "$(BEEBLINK)/Z/Z.SCR15"
+	$(ZX02TOOL) pack "$(BEEBLINK)/1/$$.SCR16" -o "$(BEEBLINK)/Z/Z.SCR16"
+
+	$(PYTHON) "$(BEEB_BIN)/ssd_create.py" --opt4 2 -o "$(BUILD)/screens.0.ssd" "$(BEEBLINK)/Z/$$.!BOOT" "$(BEEBLINK)/Z/Z.SCR0" "$(BEEBLINK)/Z/Z.SCR1" "$(BEEBLINK)/Z/Z.SCR2" "$(BEEBLINK)/Z/Z.SCR3" "$(BEEBLINK)/Z/Z.SCR4" "$(BEEBLINK)/Z/Z.SCR5" "$(BEEBLINK)/Z/Z.SCR6" "$(BEEBLINK)/Z/Z.SCR7" "$(BEEBLINK)/Z/Z.SCR8" "$(BEEBLINK)/Z/Z.SCR9" "$(BEEBLINK)/Z/Z.SCR10" "$(BEEBLINK)/Z/Z.SCR11" "$(BEEBLINK)/Z/Z.SCR12" "$(BEEBLINK)/Z/Z.SCR13" "$(BEEBLINK)/Z/Z.SCR14" "$(BEEBLINK)/Z/Z.SCR15"
+	$(PYTHON) "$(BEEB_BIN)/dsd_create.py" -o "$(BUILD)/screens.dsd" -0 "$(BUILD)/screens.0.ssd"
 
 ##########################################################################
 ##########################################################################
 
 .PHONY:clean
-clean: _clean_dependencies
+clean:
 	$(SHELLCMD) rm-tree "$(BUILD)"
+	$(SHELLCMD) rm-tree "$(BEEBLINK)/Z"
+
+##########################################################################
+##########################################################################
+
+.PHONY:clean_everything
+clean_everything: clean clean_zx02_cache clean_dependencies
+
+##########################################################################
+##########################################################################
+
+.PHONY:clean_zx02_cache
+clean_zx02_cache:
+	$(SHELLCMD) rm-tree ".zx02_cache"
+
+##########################################################################
+##########################################################################
+
+.PHONY:zx02_repack
+zx02_repack:
+	$(ZX02TOOL) repack
 
 ##########################################################################
 ##########################################################################
@@ -111,15 +161,15 @@ endif
 ##########################################################################
 ##########################################################################
 
-.PHONY:_clean_dependencies
-_clean_dependencies:
+.PHONY:clean_dependencies
+clean_dependencies:
 ifneq ($(UNAME),Windows_NT)
 	cd "dependencies/zx02" && $(RECENT_GNU_MAKE) clean
-	rm -f "$(ZX02)"
+	rm -f "$(ZX02_EXE)"
 	cd "dependencies/beebasm/src" && $(RECENT_GNU_MAKE) clean VERBOSE=$(VERBOSE)
-	rm -f "$(BEEBASM)"
+	rm -f "$(BEEBASM_EXE)"
 	cd "dependencies/tass64-code.r3243" && $(MAKE) clean
-	rm -f "$(TASS)"
+	rm -f "$(TASS_EXE)"
 endif
 
 ##########################################################################
@@ -146,5 +196,4 @@ test_zx02tool: _build_dependencies
 
 .PHONY:_tom
 _tom:
-	$(MAKE)
-
+	$(MAKE) -f "tests/tom/Makefile"

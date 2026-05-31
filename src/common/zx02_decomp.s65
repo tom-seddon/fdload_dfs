@@ -1,24 +1,36 @@
+                .weak
+zx02_decomp_enable_multi_part=true
+                .endweak
+                
                 .section zx02_workspace_zp
+ZX0_src: .fill 2
+ZX0_dst: .fill 2
 offset: .fill 2
 bitr: .fill 1
-ZX0_dst: .fill 2
-ZX0_src: .fill 2
 pntr: .fill 2
+                .if zx02_decomp_enable_multi_part
 ZX0_saved_state_size: .fill 1
 entry_s: .fill 1
+                .endif
                 .endsection zx02_workspace_zp
 
+                .if zx02_decomp_enable_multi_part
                 .section zx02_workspace_main
 stack_buf: .fill 12
                 .endsection zx02_workspace_main
+                .endif
 
+                .if zx02_decomp_enable_multi_part
 jsr_get_src_byte_addrs:=[]
+                .endif
 
 jsr_get_src_byte: .macro
+                .if zx02_decomp_enable_multi_part
 jsr_get_src_byte_addrs..=[*]
+                .endif
                 jsr get_src_byte
                 .endmacro
-                
+
                 .section zx02_code
 ;--------------------------------------------------
 ;
@@ -27,7 +39,9 @@ jsr_get_src_byte_addrs..=[*]
 ;
 ; Single part unpack. Unpack compressed data to a buffer.
 ;
-; 1. jsr prepare_decome_single_part
+                .if zx02_decomp_enable_multi_part
+; 1. jsr prepare_decomp_single_part
+                .endif
 ;
 ; 2. Set (ZX0_dest) to address to unpack to
 ;
@@ -38,6 +52,7 @@ jsr_get_src_byte_addrs..=[*]
 ; The data will be unpacked in one go, much as per the original ZX02
 ; routines.
 ;
+                .if zx02_decomp_enable_multi_part
 ; Multi part unpack. Supply compressed data 256 bytes at a time.
 ;
 ; 1. Set (ZX0_dest) to address to unpack to. You're committed to this
@@ -52,17 +67,20 @@ jsr_get_src_byte_addrs..=[*]
 ;
 ; On exit, test ZX0_saved_state_size.
 ;
-; If non-zero, supply next 256 bytes of data and go to step 3.
-; (ZX0_src can be different for each part, though it must be
-; page-aligned)
-
+; If non-zero, supply next 256 bytes of data and go to step 3. ZX0_src
+; is unmodified in this case. (ZX0_src can be changed for each part,
+; though it must be page-aligned)
+                .endif
+                
 decomp: .block
+                .if zx02_decomp_enable_multi_part
                 tsx
                 stx entry_s
 
                 ; will be zero for first part
                 ldy ZX0_saved_state_size
                 bne resume
+                .endif
 
                 lda #$80
                 sta bitr
@@ -164,6 +182,7 @@ elias_skip1:
                 
 ;-------------------------------------------------------------------------
 
+                .if zx02_decomp_enable_multi_part
 resume:
 restore_stack_loop:
                 lda stack_buf-1,y
@@ -178,10 +197,12 @@ restore_stack_loop:
                 plp             ; restore C
 
                 .cerror *!=get_src_byte.multi_part
+                .endif
 
 ; must preserve X/Y/C
 get_src_byte: .block
                 .page
+                .if zx02_decomp_enable_multi_part
 multi_part:
                 lda (ZX0_src)   ; fetch next input byte
                 inc ZX0_src+0   ; next input byte address
@@ -192,7 +213,6 @@ multi_part:
                 lda #<multi_part_empty
                 jsr repoint_get_src_byte
                 pla
-done:
                 rts
 
 ; must preserve X/Y/C
@@ -218,16 +238,17 @@ save_stack_loop:
                 ; ZX0_saved_state_size. And besides, there's no need;
                 ; it can just as easily be done when resumed.
                 rts
-
+                .endif
 ; must preserve X/Y/C
 single_part:
+                .endpage
                 lda (ZX0_src)
                 inc ZX0_src+0
                 bne done
                 inc ZX0_src+1
+done:
                 rts
 
-                .endpage
                 .endblock
 
 copy_bytes: .block
@@ -266,6 +287,7 @@ carry:
                 .endblock
                 .endblock
 
+                .if zx02_decomp_enable_multi_part
 prepare_decomp_multi_part:
                 lda #<decomp.get_src_byte.multi_part
                 .byte $fc       ; 3-byte NOP (4 cycles)
@@ -279,9 +301,13 @@ repoint_get_src_byte:
                 .for _i=0,_i<len(jsr_get_src_byte_addrs),_i+=1
                 sta jsr_get_src_byte_addrs[_i]+1
                 .endfor
+                .endif
 decomp_done:
+                .if zx02_decomp_enable_multi_part
                 stz ZX0_saved_state_size
+                .endif
                 rts
+                
 
                 .endsection zx02_code
 

@@ -1,0 +1,61 @@
+                .include '../../dependencies/beeb/include/beeb.s65'
+                .include '../shared_constants.asm'
+                .include '../../build/framework_bank.exports.s65'
+
+;-------------------------------------------------------------------------
+
+*=$200
+
+                .cerror *!=loader_load_file
+                bra loader_load_file_impl
+
+                .cerror *!=framework_select_bank
+                bra framework_select_bank_impl
+
+                .cerror *!=irq1v
+                .word default_irq_handler
+
+                .cerror *!=loader_decomp_data
+                bra loader_decomp_data_impl
+
+                .cerror *!=loader_decomp_data_2
+                bra loader_decomp_data_2_impl
+
+framework_select_bank_impl:
+                ldy romsel
+                lda #framework_bank
+                sta romsel
+                rts
+
+loader_load_file_impl:
+                jsr copy_in
+                jmp framework_ram_loader_load_file
+
+loader_decomp_data_impl:
+                jsr copy_in
+loader_decomp_data_2_impl:
+                jsr framework_ram_prepare_decomp_single_part
+                jmp framework_ram_decomp
+                
+
+default_irq_handler:
+                lda $fc
+                rti
+
+copy_in:
+                phx
+                phy
+                jsr framework_select_bank
+                jsr framework_rom_copy_in
+                sty romsel
+                ply
+                plx
+                rts
+                
+                .fill $258-*,0
+                .byte 3         ; *FX200,3
+                .fill $300-*,0
+                
+                .cerror *>$300
+
+;-------------------------------------------------------------------------

@@ -1,0 +1,174 @@
+; eliminate any multi-part decomp stuff
+zx02_decomp_enable_multi_part=false
+
+                .include '../../dependencies/beeb/include/beeb.s65'
+                .include '../shared_constants.asm'
+                .include 'zx02_decomp.s65'
+                .include '../../build/framework_bank.exports.s65'
+                .include 'constants.s65'
+
+;-------------------------------------------------------------------------
+
+*=$70
+                .dsection zx02_workspace_zp
+
+;-------------------------------------------------------------------------
+
+
+*=$1900
+                sta $f000       ; initiate b2 trace
+                
+                lda #0          ; OSBYTE get OS version
+                ldx #1          ; return type, no BRK
+                jsr osbyte
+                cpx #0
+                beq requires_master_error ; taken if OS 1.00/Electron
+
+                ; Do a hardware check to detect Master hardware. No
+                ; reason not to run if booting from hacked OS 1.20/OS
+                ; 2.00.
+                lda acccon
+                and #%11000000
+                beq got_master_hw
+
+requires_master_error:
+                brk
+                .byte 255
+                .text 'Requires Master 128/Compact/Olivetta PC 128 S',0
+
+got_master_hw:
+                lda $f4
+                pha
+                
+                ldy #4
+check_swram:
+                sty $f4
+                sty romsel
+
+                lda $8008       ; binary version number
+                tax             ; save old value
+                eor #$ff
+                sta $8008       ; attempt to modify
+                cpx $8008       ; Z=0 if it changed
+                stx $8008       ; restore old value
+                bne next_bank
+
+                ; not RAM - error
+                pla
+                sta $f4
+                brk
+                .byte 255
+                .text 'Must have sideways RAM in banks 4-7',0
+
+next_bank:
+                iny
+                cpy #8
+                bne check_swram
+
+                pla             ; discard old RAM bank, now irrelevant
+
+                ; clear sideways RAM.
+                ldy #4
+clear_swram:
+                sty $f4
+                sty romsel
+
+                lda #$80
+                sta clear_swram_write+2
+                ldx #0
+                lda #memory_clear_value
+clear_swram_loop:
+clear_swram_write: sta $ff00,x
+                inx
+                bne clear_swram_loop
+
+                inc clear_swram_write+2
+                bit clear_swram_write+2 ; V=1 if >=$c0
+                bvc clear_swram_loop    ; taken if <$c0
+
+                iny
+                cpy #8
+                bne clear_swram
+
+                ldy #7
+                sty $f4
+                sty $fe30
+
+; no OS stuff available past this point.
+
+                sei
+
+                ; unpack page 2 stuff
+                lda #<framework_page02_data
+                sta ZX0_src+0
+                lda #>framework_page02_data
+                sta ZX0_src+1
+
+                stz ZX0_dst+0
+                lda #2
+                sta ZX0_dst+1
+
+                jsr decomp
+
+                ; unpack ROM stuff
+                lda #<framework_bank_data
+                sta ZX0_src+0
+                lda #>framework_bank_data
+                sta ZX0_src+1
+
+                lda #<framework_bank_code_begin
+                sta ZX0_dst+0
+                lda #>framework_bank_code_begin
+                sta ZX0_dst+1
+
+                jsr decomp
+
+                ; copy loader code in.
+                jsr framework_rom_copy_in
+
+                ; do the 1-time disk init.
+                jsr framework_ram_fdload_init
+
+                ; set up to read into the cat buffers from track 0.
+                stz framework_zp_fdload_track
+                lda #>framework_bank_cat_buffers
+                sta framework_zp_fdload_addr_msb
+
+                ; side 0.
+                stz framework_zp_fdload_side
+                jsr read_cat
+
+                ; side 1.
+                inc framework_zp_fdload_side
+                jsr read_cat
+
+                ; the boot clears out the RAM. Don't leave any NMIs
+                ; pending!
+                jsr framework_ram_fdload_wait_not_busy
+
+                ; go to the boot step.
+                jmp framework_rom_boot
+
+read_cat:
+                ; read sector 0 then sector 1.
+                stz framework_zp_fdload_sector
+                jsr framework_ram_fdload_read1
+                inc framework_zp_fdload_addr_msb
+                inc framework_zp_fdload_sector
+                jmp framework_ram_fdload_read1
+
+romy:
+                sty $f4
+                sty romsel
+                rts
+
+                .dsection zx02_code
+                
+framework_page02_data:
+                .binary '../../build/framework_page02.dat.zx02'
+
+framework_bank_data:
+                .binary '../../build/framework_bank.dat.zx02'
+                
+
+;-------------------------------------------------------------------------

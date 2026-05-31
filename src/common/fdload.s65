@@ -63,7 +63,7 @@ type_ii_flags=%0000
 ; when current command done
 fdload_flags: .fill 1
 fdload_addr_msb: .fill 1
-fdload_side: .fill 1
+fdload_side: .fill 1            ; 0=drive 0, other=drive 2
 fdload_track: .fill 1
 fdload_sector: .fill 1
 fdload_nmi_tmpa: .fill 1
@@ -214,7 +214,7 @@ fdload_read1:
                 bra fdload_issue_seek
 
 fdload_issue_read:
-                ; *called from the NMI routine* - must use A only.
+                ; *also called from the NMI routine* - must use A only.
                 
                 ; put the NMI routine in the store data state
                 lda #NOP_imm

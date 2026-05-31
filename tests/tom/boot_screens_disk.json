@@ -1,0 +1,18 @@
+{
+    "requests":[
+	{
+	    "type":"load_disk_image",
+	    "args":{
+		"path":"screens.dsd",
+		"drive":0
+	    }
+	},
+        {
+            "type":"config",
+            "args":{
+                "base_default_config":"Master 128 (MOS 3.50)",
+		"boot":true
+            }
+        }
+    ]
+}

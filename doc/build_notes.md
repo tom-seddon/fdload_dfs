@@ -1,6 +1,7 @@
 # Build goals
 
-1. Build on Windows, macOS and Linux
+1. Build on Windows and POSIX-type systems (in this case: macOS and
+   Linux)
 
 2. Require only a few easily-installed dependencies (that you might
    expect a software developer to have installed already)
@@ -9,10 +10,34 @@
    
 4. Produce bit-identical results on all platforms
 
+# Build targets
+
+## `build`
+
+Default targets. Builds everything.
+
+## `clean`
+
+Deletes 6502-related output only.
+
+## `clean_zx02_cache`
+
+Deletes zx02 cache. You may be in for a bit of a wait on the next
+build.
+
+## `clean_dependencies` (no-op on Windows)
+
+Clean dependencies' build byproducts.
+
+## `clean_everything`
+
+Do all of the above: `clean`, `clean_zx02_cache` and
+`clean_dependencies`.
+
 # Build notes
 
 macOS and Linux are similar enough that they both come into the same
-category ("POSIX-type"). Windows is its own thing.
+category. Windows is its own thing.
 
 On POSIX-type systems, build dependencies from source as part of the
 build process. (See existing examples: beebasm, 64tass, and zx02.)
@@ -118,8 +143,5 @@ other way, and the output can be used just the same!
   
 Notes:
 
-- `build` and `.zx02_cache` are separate so that it's easy to have
-  `make clean` (delete build byproducts, force full build) separate
-  from deleting the zx02tool cache (condemning yourself to a lengthy
-  wait)
-
+- `build` and `.zx02_cache` are separate to simplify having them
+  cleaned independently

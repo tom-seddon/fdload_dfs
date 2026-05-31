@@ -1,0 +1,264 @@
+                .include '../../dependencies/beeb/include/beeb.s65'
+                .include '../shared_constants.asm'
+                .include 'dfs.s65'
+                .include 'zx02_decomp.s65'
+                .include 'fdload.s65'
+                .include 'loader.s65'
+                .include 'constants.s65'
+
+;-------------------------------------------------------------------------
+
+*=$e0
+                .dsection zx02_workspace_zp
+                .dsection fdload_workspace_zp
+                .dsection dfs_workspace_zp
+                .dsection loader_workspace_zp
+                .cerror *>$fc
+
+;-------------------------------------------------------------------------
+
+*=framework_bank_code_begin
+                .dsection framework_bank_code
+                .dsection dfs_code
+main_ram_stuff_unrelocated_begin:
+                .logical $d00-(fdload_ram_code-main_ram_stuff_relocated_begin)
+main_ram_stuff_relocated_begin:
+                .cerror *<loader_main_ram_code_begin
+                .dsection loader_code_main
+                .dsection zx02_code
+                .dsection zx02_workspace_main
+                .dsection dfs_workspace_main
+fdload_ram_code:
+                .dsection fdload_code
+                .dsection dfs_code_main
+                .dsection loader_workspace_main
+                .cerror *>=loader_main_ram_code_end
+                .endlogical
+main_ram_stuff_unrelocated_end:
+
+;-------------------------------------------------------------------------
+
+; these symbols are exposed to BeebAsm code as well. It'd be nice to
+; have them exported with framework_bank_exports, but BeebAsm's
+; include directive and 64tass's include directive aren't
+; syntactically compatible. So there's an explicit constant in
+; shared_constants.asm and a .cerror here to make sure they don't get
+; out of line.
+
+                .cerror ZX0_src!=loader_decomp_src
+                .cerror ZX0_dst!=loader_decomp_dest
+                
+;-------------------------------------------------------------------------
+
+; these symbols are exported for use by other 64tass files.
+                
+framework_bank_exports: .block
+; The rom_ symbols are accessible only when the ROM is paged in.
+framework_rom_boot=boot
+framework_rom_prepare_load=prepare_load
+framework_rom_copy_in=copy_in
+
+; The ram_ symbols are accessible after rom_copy_in has been called.
+framework_ram_loader_load_file=loader_load_file_3 ; can we get a better name here please.
+framework_ram_decomp=decomp
+framework_ram_prepare_decomp_single_part=prepare_decomp_single_part
+framework_ram_fdload_init=fdload_init
+framework_ram_fdload_read1=fdload_read1
+framework_ram_fdload_wait_not_busy=fdload_wait_not_busy
+                
+; The zp_ symbols are zero page.
+framework_zp_fdload_track=fdload_track
+framework_zp_fdload_addr_msb=fdload_addr_msb
+framework_zp_fdload_side=fdload_side
+framework_zp_fdload_sector=fdload_sector
+                .endblock
+
+;-------------------------------------------------------------------------
+
+                .section framework_bank_code
+
+;-------------------------------------------------------------------------
+;
+; Clear memory and put system in a known state.
+;
+; exit: RAM cleared, except for page 2
+;       S=$ff
+;       interrupts disabled
+;       ANDY paged out
+;       HAZEL paged in
+;       shadow paged out
+;       main RAM displayed
+boot: .block
+                sei
+                
+                ; page in ANDY
+                lda #$80
+                tsb romsel
+
+                ; clear 4 KB at $8000
+                ldy #$90
+                jsr clear
+
+                ; page out ANDY
+                lda #$80
+                trb romsel
+
+                ; page in HAZEL
+                lda #acccon.y
+                tsb acccon
+
+                ; clear 8 KB at $c000
+                lda #$c0
+                ldy #$e0
+                jsr clear
+
+                ; page in shadow RAM
+                lda #acccon.x
+                tsb acccon
+
+                ; clear 20 KB at $3000
+                lda #$30
+                ldy #$80
+                jsr clear
+
+                ; page out shadow RAM
+                lda #acccon.x
+                trb acccon
+
+                ; clear all of main RAM except for page 2
+                lda #$03
+                ldy #$80
+                jsr clear
+
+                ; can't call a routine to clear the stack! Might as
+                ; clear zero page at the same time.
+                ;
+                ; (X=0 and A=memory clear value from last clear call)
+clear_zp_and_stack_loop:
+                sta 0,x
+                sta $100,x
+                inx
+                bne clear_zp_and_stack_loop
+
+                ; display main RAM
+                lda #acccon.d
+                trb acccon
+
+                ldx #$ff
+                txs
+
+halt:
+                ldx #0
+-
+                inc $7c00,x
+                inx
+                bne -
+                jmp halt
+
+clear:
+                sta clear_byte+2
+                ldx #0
+                lda #memory_clear_value
+clear_loop:
+clear_byte: sta $ff00,x
+                inx
+                bne clear_loop
+
+                inc clear_byte+2
+                cpy clear_byte+2
+                bne clear_loop
+
+                rts
+
+                .endblock
+
+;-------------------------------------------------------------------------
+;
+; Prepare for a DFS file load.
+;
+; Entry: dfs file name set up
+;        loader_arguments set up
+;
+; Exit: C=0 if file not found
+;       else:
+;       ?fdload_track = start track for read
+;       ?fdload_sector = start sector for read
+;       (ZX0_dst) = address to load to
+;       ...plus all the other dfs metadata
+;       bit 7 of ?loader_decomp is set if file looks compressed
+;       if file looks compressed, ZX02 is prepared for a multi-part decomp
+prepare_load: .block
+                jsr dfs_find_entry
+                bcc done
+
+                ; Sort out load address
+                lda loader_arguments.addr+1
+                beq got_load_address ; taken if file's load address should be used
+                sta dfs_load+1
+                lda loader_arguments.addr+0
+                sta dfs_load+0
+got_load_address:
+                lda dfs_load+0
+                sta ZX0_dst+0
+                lda dfs_load+1
+                sta ZX0_dst+1
+
+                ; Copy DFS track and sector.
+                lda dfs_track
+                sta fdload_track
+                lda dfs_sector
+                sta fdload_sector
+
+                ; Assume file not compressed.
+                stz loader_decomp
+
+                ; Is it a compressed file? Prepare ZX02 if so.
+                lda dfs_dir
+                jsr dfs_find_entry.toupper ; ugh
+                cmp #'Z'
+                bne zx02_prepared
+
+                ; Set loader_decomp bit 7.
+                ror loader_decomp
+
+                ; Prepare ZX02.
+                jsr prepare_decomp_multi_part
+
+zx02_prepared:
+
+                sec
+done:
+                rts
+                .endblock
+                
+;-------------------------------------------------------------------------
+;
+; Copy loader code into main RAM.
+;
+; Preserves: Y
+copy_in: .block
+                ldx #0
+loop:
+main_ram_stuff_size=main_ram_stuff_unrelocated_end-main_ram_stuff_unrelocated_begin
+num_pages=>(main_ram_stuff_size+255)
+                .cerror num_pages<2 ; need a rethink if this hits...
+                .for page=0,page<num_pages,page+=1
+                .block
+                .if page<num_pages-1
+_offset=page*256
+                .else
+_offset=main_ram_stuff_size-256
+                .endif
+                lda main_ram_stuff_unrelocated_begin+_offset,x
+                sta main_ram_stuff_relocated_begin+_offset,x
+                .endblock
+                .endfor
+                inx
+                bne loop
+                rts
+                .endblock
+
+;-------------------------------------------------------------------------
+
+                .endsection framework_bank_code
+                
