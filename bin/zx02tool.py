@@ -4,6 +4,21 @@ import sys,os,os.path,argparse,collections
 ##########################################################################
 ##########################################################################
 
+# TODO:
+
+# Need a stats command or something. Reuse the repack output? It'll be
+# somewhat bogus if there's stale data in the cache, but
+# clean+build+repack is always an option. The info is only needed
+# occasionally.
+
+# For better numbers from the above, some time-based mechanism for
+# tracking files actually used in the last build?
+
+# Actual support for parallel use. It might just about work as-is but 
+
+##########################################################################
+##########################################################################
+
 def fatal(msg):
     sys.stderr.write('FATAL: %s\n'%msg)
     sys.exit(1)
@@ -48,13 +63,14 @@ def load(path,mode=None):
 ##########################################################################
 ##########################################################################
 
-CacheEntry=collections.namedtuple('CacheEntry','folder orig packed qpacked')
+CacheEntry=collections.namedtuple('CacheEntry','folder path orig packed qpacked')
 
 def get_cache_entry(u_hash,options):
     folder=os.path.join(options.g_cache,u_hash[:3])
     stem=os.path.join(folder,u_hash+'.')
 
     return CacheEntry(folder=folder,
+                      path=stem+'path.txt',
                       orig=stem+'orig',
                       packed=stem+'zx02',
                       qpacked=stem+'qzx02')
@@ -130,6 +146,8 @@ def pack_cmd(options):
         if returncode!=0:
             fatal('zx02 returned %d for file: %s'%(returncode,entry.orig))
 
+        with open(entry.path,'wt') as f: f.write('%s\n'%options.input_path)
+
     if options.output_path is not None:
         c_data=load(c_path)
         save(options.output_path,c_data)
@@ -192,6 +210,21 @@ def repack_cmd(options):
                 print('%s: failed: %s'%(prefix,e))
 
     if not all_good: fatal('repack failed')
+
+    if len(entries)>0:
+        total_repack_delta=0
+        for entry in entries:
+            with open(entry.path,'rt') as f: path=f.read().strip()
+            orig_size=os.stat(entry.orig).st_size
+            qsize=os.stat(entry.qpacked).st_size
+            size=os.stat(entry.packed).st_size
+            
+            qpack_delta=qsize-orig_size
+            pack_delta=size-orig_size
+            repack_delta=size-qsize
+            total_repack_delta+=repack_delta
+            print(f'{path}: orig {orig_size}, qpacked {qsize} ({qpack_delta}), packed {size} ({pack_delta}; {repack_delta})')
+        print('total repack delta: %d'%total_repack_delta)
 
 ##########################################################################
 ##########################################################################
