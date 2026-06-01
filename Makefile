@@ -84,14 +84,16 @@ build: _build_dependencies
 	$(TASS) --cbm-prg -L "$(BUILD)/dfs_basic_tester.lst" -o "$(BUILD)/dfs_basic_tester.prg" "src/common/dfs_basic_tester.s65"
 	$(PYTHON) "$(BEEB_BIN)/prg2bbc.py" --io "$(BUILD)/dfs_basic_tester.prg" "$(BEEBLINK)/Z/$$.DFS"
 
-	$(TASS) --nostart -L "$(BUILD)/framework_bank.lst" -o "$(BUILD)/framework_bank.dat" "src/common/framework_bank.s65" --labels-root=framework_bank_exports "--labels=$(BUILD)/framework_bank.exports.s65"
-	$(ZX02TOOL) pack "$(BUILD)/framework_bank.dat" -o "$(BUILD)/framework_bank.dat.zx02"
+	$(TASS) --nostart -L "$(BUILD)/framework_bank.loader.lst" -o "$(BUILD)/framework_bank.loader.dat" "src/common/framework_bank.loader.s65" --labels-root=framework_bank_exports "--labels=$(BUILD)/framework_bank.loader.exports.asm"
+	$(ZX02TOOL) pack "$(BUILD)/framework_bank.loader.dat" -o "$(BUILD)/framework_bank.loader.dat.zx02"
 
 	$(TASS) --nostart -L "$(BUILD)/framework_page02.lst" -o "$(BUILD)/framework_page02.dat" "src/common/framework_page02.s65"
 	$(ZX02TOOL) pack "$(BUILD)/framework_page02.dat" -o "$(BUILD)/framework_page02.dat.zx02"
 
 	$(TASS) --cbm-prg -L "$(BUILD)/boot.lst" -o "$(BUILD)/boot.prg" "src/common/boot.s65"
 	$(PYTHON) "$(BEEB_BIN)/prg2bbc.py" --io "$(BUILD)/boot.prg" "$(BEEBLINK)/Z/$$.!BOOT"
+
+	cd "src/common" && $(BEEBASM) -i "framework_bank.transitions.asm" -o "$(BUILD)/framework_bank.transitions.dat" > "$(BUILD)/framework_bank.transitions.txt"
 
 	$(ZX02TOOL) pack "$(BEEBLINK)/1/$$.SCR0" -o "$(BEEBLINK)/Z/Z.SCR0"
 	$(ZX02TOOL) pack "$(BEEBLINK)/1/$$.SCR1" -o "$(BEEBLINK)/Z/Z.SCR1"

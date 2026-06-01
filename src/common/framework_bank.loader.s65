@@ -17,7 +17,7 @@
 
 ;-------------------------------------------------------------------------
 
-*=framework_bank_code_begin
+*=framework_bank_loader_code_begin
                 .dsection framework_bank_code
                 .dsection dfs_code
 main_ram_stuff_unrelocated_begin:
@@ -35,7 +35,7 @@ fdload_ram_code:
                 .cerror *>=loader_main_ram_code_end
                 .endlogical
 main_ram_stuff_unrelocated_end:
-                .cerror *>framework_bank_code_end
+                .cerror *>framework_bank_loader_code_end
 
 ;-------------------------------------------------------------------------
 

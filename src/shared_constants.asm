@@ -27,9 +27,13 @@ loader_decomp_dest=loader_decomp_src+2
 ; simplifies layout of the rest.
 framework_bank_cat_buffers=$bc00
 
+; Where the framework bank transition code goes.
+framework_bank_transitions_begin=$8000 ; inclusive
+framework_bank_transitions_end=$b800   ; exclusive
+
 ; Where the framework bank shared code goes.
-framework_bank_code_begin=$8000	; inclusive
-framework_bank_code_end=$bc00	; exclusive
+framework_bank_loader_code_begin=$b800	; inclusive
+framework_bank_loader_code_end=$bc00	; exclusive
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;
@@ -88,6 +92,13 @@ loader_decomp_data=$206
 ; Decompress data. Just as loader_decomp_data, for use when the loader
 ; routine has already been copied into main RAM.
 loader_decomp_data_2=$208
+
+; Address of transition routine to be called on each vsync.
+;
+; (This address is the jsr operand in a random bit of code. If there's
+; a mismatch, the error message will mention the correct value.
+; Assuming the discrepancy is expected, a straightforward fix.)
+framework_transition_routine_addr=$023d
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ; Local Variables:

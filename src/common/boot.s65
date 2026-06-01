@@ -4,7 +4,7 @@ zx02_decomp_enable_multi_part=false
                 .include '../../dependencies/beeb/include/beeb.s65'
                 .include '../shared_constants.asm'
                 .include 'zx02_decomp.s65'
-                .include '../../build/framework_bank.exports.s65'
+                .include '../../build/framework_bank.loader.exports.asm'
                 .include 'constants.s65'
 
 ;-------------------------------------------------------------------------
@@ -118,14 +118,14 @@ clear_swram:
                 jsr decomp
 
                 ; unpack ROM stuff
-                lda #<framework_bank_data
+                lda #<framework_bank_loader_data
                 sta ZX0_src+0
-                lda #>framework_bank_data
+                lda #>framework_bank_loader_data
                 sta ZX0_src+1
 
-                lda #<framework_bank_code_begin
+                lda #<framework_bank_loader_code_begin
                 sta ZX0_dst+0
-                lda #>framework_bank_code_begin
+                lda #>framework_bank_loader_code_begin
                 sta ZX0_dst+1
 
                 jsr decomp
@@ -193,8 +193,8 @@ store: sta $ff00,x
 framework_page02_data:
                 .binary '../../build/framework_page02.dat.zx02'
 
-framework_bank_data:
-                .binary '../../build/framework_bank.dat.zx02'
+framework_bank_loader_data:
+                .binary '../../build/framework_bank.loader.dat.zx02'
                 
 
 ;-------------------------------------------------------------------------

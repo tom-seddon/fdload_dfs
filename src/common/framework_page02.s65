@@ -1,6 +1,6 @@
                 .include '../../dependencies/beeb/include/beeb.s65'
                 .include '../shared_constants.asm'
-                .include '../../build/framework_bank.exports.s65'
+                .include '../../build/framework_bank.loader.exports.asm'
 
 ;-------------------------------------------------------------------------
 
@@ -36,8 +36,29 @@ loader_decomp_data_impl:
 loader_decomp_data_2_impl:
                 jsr framework_ram_prepare_decomp_single_part
                 jmp framework_ram_decomp
-                
 
+transition_irq_handler:
+                lda system_via.ifr
+                bpl default_irq_handler
+
+                and #VIAIRQ.ca1 ; vsync
+                beq default_irq_handler
+
+                sta system_via.ifr ; clear interrupt flag
+                
+                cld
+                lda romsel
+                pha
+                lda acccon
+                pha
+                lda #framework_bank
+                sta romsel
+                .cerror *+1!=framework_transition_routine_addr,format("*+1=$%04x; framework_transition_routine_addr=$%04x",*+1,framework_transition_routine_addr)
+                jsr $ffff
+                pla
+                sta acccon
+                pla
+                sta romsel
 default_irq_handler:
                 lda $fc
                 rti
