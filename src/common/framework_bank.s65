@@ -35,6 +35,7 @@ fdload_ram_code:
                 .cerror *>=loader_main_ram_code_end
                 .endlogical
 main_ram_stuff_unrelocated_end:
+                .cerror *>framework_bank_code_end
 
 ;-------------------------------------------------------------------------
 
@@ -91,27 +92,6 @@ framework_zp_fdload_sector=fdload_sector
 boot: .block
                 sei
                 
-                ; page in ANDY
-                lda #$80
-                tsb romsel
-
-                ; clear 4 KB at $8000
-                ldy #$90
-                jsr clear
-
-                ; page out ANDY
-                lda #$80
-                trb romsel
-
-                ; page in HAZEL
-                lda #acccon.y
-                tsb acccon
-
-                ; clear 8 KB at $c000
-                lda #$c0
-                ldy #$e0
-                jsr clear
-
                 ; page in shadow RAM
                 lda #acccon.x
                 tsb acccon

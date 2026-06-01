@@ -23,11 +23,12 @@ loader_decomp_dest=loader_decomp_src+2
 ;
 
 ; Where the catalogue buffers are stored. 256 bytes/sector*2
-; sectors/catalogue*2 catalogues=1024 ($400) bytes.
+; sectors/catalogue*2 catalogues=1024 ($400) bytes. Top of the bank
+; simplifies layout of the rest.
 framework_bank_cat_buffers=$bc00
 
 ; Where the framework bank shared code goes.
-framework_bank_code_begin=$b800	; inclusive
+framework_bank_code_begin=$8000	; inclusive
 framework_bank_code_end=$bc00	; exclusive
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;

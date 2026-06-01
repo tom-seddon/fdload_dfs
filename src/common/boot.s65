@@ -74,22 +74,29 @@ clear_swram:
                 sty romsel
 
                 lda #$80
-                sta clear_swram_write+2
-                ldx #0
-                lda #memory_clear_value
-clear_swram_loop:
-clear_swram_write: sta $ff00,x
-                inx
-                bne clear_swram_loop
-
-                inc clear_swram_write+2
-                bit clear_swram_write+2 ; V=1 if >=$c0
-                bvc clear_swram_loop    ; taken if <$c0
+                ldx #$c0
+                jsr clear_pages
 
                 iny
                 cpy #8
                 bne clear_swram
 
+                ; clear ANDY too. (Inconvenient to do from the ROM.)
+                ldy #$87
+                sty $f4
+                sty $fe30
+
+                lda #$80
+                ldx #$90
+                jsr clear_pages
+
+                ; clear HAZEL. Could also be done from the ROM, but it
+                ; saves a few bytes doing it here.
+                lda #$c0
+                ldx #$e0
+                jsr clear_pages
+
+                ; reselect framework bank.
                 ldy #7
                 sty $f4
                 sty $fe30
@@ -161,6 +168,25 @@ romy:
                 sty $f4
                 sty romsel
                 rts
+
+clear_pages: .block
+                sta store+2
+                lda #memory_clear_value
+pages_loop:
+                phx
+                ldx #0
+page_loop:          
+store: sta $ff00,x
+                inx
+                bne page_loop
+
+                inc store+2
+                plx
+                cpx store+2
+                bne pages_loop
+
+                rts
+                .endblock
 
                 .dsection zx02_code
                 
