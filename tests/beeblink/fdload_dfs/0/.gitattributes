@@ -7,3 +7,5 @@ $.FDLOADTEST diff=bbcbasic
 $.DISKLOC diff=bbcbasic
 $.DFSTEST1 diff=bbcbasic
 $.MKFILES diff=bbcbasic
+$.SHRINKY diff=bbcbasic
+$.SHRINKX diff=bbcbasic
