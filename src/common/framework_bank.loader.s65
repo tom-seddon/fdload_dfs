@@ -8,6 +8,12 @@
 
 ;-------------------------------------------------------------------------
 
+*=transition_zp_begin
+                .dsection initial_transition_zp
+                .cerror *>transition_zp_end
+
+;-------------------------------------------------------------------------
+
 *=$e0
                 .dsection zx02_workspace_zp
                 .dsection fdload_workspace_zp
@@ -84,16 +90,14 @@ framework_zp_fdload_sector=fdload_sector
 
 ;-------------------------------------------------------------------------
 
+                .section initial_transition_zp
+initial_transition_next_addr: .fill 2
+initial_transition_addr: .fill 2
+                .endsection
+                
                 .section framework_bank_code
 
-; The initial transition is a special case, and doesn't work quite
-; like the other transitions (though there are parallels), as it
-; starts before a bunch of stuff is set up, and it runs while main RAM
-; is being cleared.
-
-initial_transition_state: .byte 0
-
-init_initial_transition: .block
+set_mode_2: .block
                 ; N.B., this doesn't set the scroll wraparound size
                 ldx #13
 init_crtc_loop:
@@ -118,8 +122,7 @@ init_palette_loop:
                 lda #$06
                 sta video_ula_palette
 
-                rts                
-
+                rts
 crtc_2MHz:
                 .byte $7F            ; R0 - Horizontal Total
                 .byte 80             ; R1 - Horizontal Displayed
@@ -137,62 +140,111 @@ crtc_2MHz:
                 .byte $00            ; R13 - screen start LSB
                 .endblock
 
+init_initial_transition: .block
+                stz initial_transition_next_addr+0
+                lda #$30
+                sta initial_transition_next_addr+1
+                rts                
+                .endblock
+
 update_initial_transition: .block
-                bit initial_transition_state
+                bit transition_current_state
                 bmi update_done ; taken if transition complete
                 
                 ; page in shadow RAM
                 lda #acccon.x
                 tsb acccon
 
-                ldx #0
-                clc
+                lda initial_transition_next_addr+0
+                sta initial_transition_addr+0
+                lda initial_transition_next_addr+1
+                sta initial_transition_addr+1
+
+                ldx #80
+                ldy #0
 fill_row_loop:
                 lda #%00111111
-store_byte0: sta $3000+0*128,x
-store_byte1: sta $3000+1*128,x
-store_byte2: sta $3000+2*128,x
-store_byte3: sta $3000+3*128,x
-store_byte4: sta $3000+4*128,x
-                txa
-                adc #8
-                tax
-                bpl fill_row_loop
+                sta (initial_transition_addr),y
 
-                ldx #store_byte0-store_byte0
-                jsr update_addr
-                ldx #store_byte1-store_byte0
-                jsr update_addr
-                ldx #store_byte2-store_byte0
-                jsr update_addr
-                ldx #store_byte3-store_byte0
-                jsr update_addr
-                ldx #store_byte4-store_byte0
-                jsr update_addr
+                clc
+                tya
+                adc #8
+                tay
+                bcc +
+                inc initial_transition_addr+1
++
+                dex
+                bne fill_row_loop
+
+                inc initial_transition_next_addr+0
+                lda initial_transition_next_addr+0
+                and #7
+                bne +
+
+                clc
+                lda initial_transition_next_addr+0
+                adc #<632
+                sta initial_transition_next_addr+0
+                lda initial_transition_next_addr+1
+                adc #>632
+                sta initial_transition_next_addr+1
+                bpl +
+
+                sta transition_current_state ; set bit 7
+
++
 update_done:
                 rts
-
-update_addr:
-                inc store_byte0+1,x
-                lda store_byte0+1,x
-                and #7
-                bne update_addr_done
-                clc
-                lda store_byte0+1,x
-                adc #<(640-8)
-                sta store_byte0+1,x
-                lda store_byte0+2,x
-                adc #>(640-8)
-                sta store_byte0+2,x
-                bpl update_addr_done
-
-                ; if any of the addresses go over $8000, the
-                ; transition is over.
-                lda #$80
-                sta initial_transition_state
                 
-update_addr_done:
-                rts
+
+;                 ldx #0
+;                 clc
+; fill_row_loop:
+;                 lda #%00111111
+; store_byte0: sta $3000+0*128,x
+; store_byte1: sta $3000+1*128,x
+; store_byte2: sta $3000+2*128,x
+; store_byte3: sta $3000+3*128,x
+; store_byte4: sta $3000+4*128,x
+;                 txa
+;                 adc #8
+;                 tax
+;                 bpl fill_row_loop
+
+;                 ldx #store_byte0-store_byte0
+;                 jsr update_addr
+;                 ldx #store_byte1-store_byte0
+;                 jsr update_addr
+;                 ldx #store_byte2-store_byte0
+;                 jsr update_addr
+;                 ldx #store_byte3-store_byte0
+;                 jsr update_addr
+;                 ldx #store_byte4-store_byte0
+;                 jsr update_addr
+; update_done:
+;                 rts
+
+; update_addr:
+;                 inc store_byte0+1,x
+;                 lda store_byte0+1,x
+;                 and #7
+;                 bne update_addr_done
+;                 clc
+;                 lda store_byte0+1,x
+;                 adc #<(640-8)
+;                 sta store_byte0+1,x
+;                 lda store_byte0+2,x
+;                 adc #>(640-8)
+;                 sta store_byte0+2,x
+;                 bpl update_addr_done
+
+;                 ; if any of the addresses go over $8000, the
+;                 ; transition is over.
+;                 lda #$80
+;                 sta initial_transition_state
+                
+; update_done:
+;                 rts
                 
                 .endblock
 
@@ -321,6 +373,7 @@ clear_zp_and_stack_loop:
                 jsr clear
 
                 ; set initial transition effect running.
+                jsr set_mode_2
                 jsr init_initial_transition
 
                 lda #<update_initial_transition
