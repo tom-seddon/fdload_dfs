@@ -4,6 +4,12 @@
 
 ;-------------------------------------------------------------------------
 
+check_addr: .macro name,wanted,got
+                .cerror (\got)!=(\wanted),format("%s mismatch: got $%04x, wanted $%04x",(\name),(\got),(\wanted))
+                .endmacro
+                
+;-------------------------------------------------------------------------
+
 *=$200
 
                 .cerror *!=loader_load_file
@@ -37,6 +43,20 @@ loader_decomp_data_2_impl:
                 jsr framework_ram_prepare_decomp_single_part
                 jmp framework_ram_decomp
 
+copy_in:
+                phx
+                phy
+                jsr framework_select_bank
+                jsr framework_rom_copy_in
+                sty romsel
+                ply
+                plx
+                rts
+                
+                .fill $258-*,0
+                .byte 3         ; *FX200,3
+
+                .check_addr "framework_transition_irq_handler",framework_transition_irq_handler,*
 transition_irq_handler:
                 lda system_via.ifr
                 bpl default_irq_handler
@@ -53,8 +73,14 @@ transition_irq_handler:
                 pha
                 lda #framework_bank
                 sta romsel
-                .cerror *+1!=framework_transition_routine_addr,format("*+1=$%04x; framework_transition_routine_addr=$%04x",*+1,framework_transition_routine_addr)
+                phx
+                phy
+                
+                .check_addr "framework_transition_routine_addr",framework_transition_routine_addr,*+1
                 jsr $ffff
+                
+                ply
+                plx
                 pla
                 sta acccon
                 pla
@@ -63,18 +89,6 @@ default_irq_handler:
                 lda $fc
                 rti
 
-copy_in:
-                phx
-                phy
-                jsr framework_select_bank
-                jsr framework_rom_copy_in
-                sty romsel
-                ply
-                plx
-                rts
-                
-                .fill $258-*,0
-                .byte 3         ; *FX200,3
                 .fill $300-*,0
                 
                 .cerror *>$300

@@ -24,7 +24,7 @@ drive: .fill 1
 
 loader_load_file_3: .block
                 stx dfs_name+0
-                stx dfs_name+1
+                sty dfs_name+1
 
                 ; save load address and drive number
                 ldy #0
@@ -40,9 +40,18 @@ copy_loader_arguments_loop:
                 jsr dfs_copy_name
 
                 jsr framework_select_bank
-                phy
+                phy             ; save old ROM bank
 
                 jsr framework_bank_exports.framework_rom_prepare_load
+
+                bcs begin
+
+                lda #'f'
+                jmp framework_bank_exports.framework_rom_error
+
+begin:
+                pla             ; A=old ROM bank
+                sta romsel      ; reselect old ROM bank
 
                 ; Buffer 0 is the write buffer to start with.
                 lda #>loader_main_ram_sector_buffer_0

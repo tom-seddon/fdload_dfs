@@ -60,7 +60,7 @@ TASS_EXE:=$(BIN)/64tass
 
 # How to run tools. May include command line options.
 ZX02:=$(ZX02_EXE)
-BEEBASM:=$(BEEBASM_EXE)
+BEEBASM:=$(BEEBASM_EXE)		#TODO should this have -w?
 TASS:=$(TASS_EXE) -Wall --case-sensitive $(if $(VERBOSE),,--quiet) --long-branch --m65c02 --verbose-list
 ZX02TOOL:=$(PYTHON) "$(BIN)/zx02tool.py"
 export ZX02
@@ -93,7 +93,8 @@ build: _build_dependencies
 	$(TASS) --cbm-prg -L "$(BUILD)/boot.lst" -o "$(BUILD)/boot.prg" "src/common/boot.s65"
 	$(PYTHON) "$(BEEB_BIN)/prg2bbc.py" --io "$(BUILD)/boot.prg" "$(BEEBLINK)/Z/$$.!BOOT"
 
-	cd "src/common" && $(BEEBASM) -i "framework_bank.transitions.asm" -o "$(BUILD)/framework_bank.transitions.dat" > "$(BUILD)/framework_bank.transitions.txt"
+	cd "src/common" && $(BEEBASM) -w -i "framework_bank.transitions.asm" -o "$(BUILD)/framework_bank.transitions.dat" > "$(BUILD)/framework_bank.transitions.txt"
+	$(ZX02TOOL) pack "$(BUILD)/framework_bank.transitions.dat" -o "$(BUILD)/Z.FW"
 
 	$(ZX02TOOL) pack "$(BEEBLINK)/1/$$.SCR0" -o "$(BEEBLINK)/Z/Z.SCR0"
 	$(ZX02TOOL) pack "$(BEEBLINK)/1/$$.SCR1" -o "$(BEEBLINK)/Z/Z.SCR1"
@@ -113,7 +114,7 @@ build: _build_dependencies
 	$(ZX02TOOL) pack "$(BEEBLINK)/1/$$.SCR15" -o "$(BEEBLINK)/Z/Z.SCR15"
 	$(ZX02TOOL) pack "$(BEEBLINK)/1/$$.SCR16" -o "$(BEEBLINK)/Z/Z.SCR16"
 
-	$(PYTHON) "$(BEEB_BIN)/ssd_create.py" --opt4 2 -o "$(BUILD)/screens.0.ssd" "$(BEEBLINK)/Z/$$.!BOOT" "$(BEEBLINK)/Z/Z.SCR0" "$(BEEBLINK)/Z/Z.SCR1" "$(BEEBLINK)/Z/Z.SCR2" "$(BEEBLINK)/Z/Z.SCR3" "$(BEEBLINK)/Z/Z.SCR4" "$(BEEBLINK)/Z/Z.SCR5" "$(BEEBLINK)/Z/Z.SCR6" "$(BEEBLINK)/Z/Z.SCR7" "$(BEEBLINK)/Z/Z.SCR8" "$(BEEBLINK)/Z/Z.SCR9" "$(BEEBLINK)/Z/Z.SCR10" "$(BEEBLINK)/Z/Z.SCR11" "$(BEEBLINK)/Z/Z.SCR12" "$(BEEBLINK)/Z/Z.SCR13" "$(BEEBLINK)/Z/Z.SCR14" "$(BEEBLINK)/Z/Z.SCR15"
+	$(PYTHON) "$(BEEB_BIN)/ssd_create.py" --opt4 2 -o "$(BUILD)/screens.0.ssd" "$(BEEBLINK)/Z/$$.!BOOT" "$(BUILD)/Z.FW" "$(BEEBLINK)/Z/Z.SCR0" "$(BEEBLINK)/Z/Z.SCR1" "$(BEEBLINK)/Z/Z.SCR2" "$(BEEBLINK)/Z/Z.SCR3" "$(BEEBLINK)/Z/Z.SCR4" "$(BEEBLINK)/Z/Z.SCR5" "$(BEEBLINK)/Z/Z.SCR6" "$(BEEBLINK)/Z/Z.SCR7" "$(BEEBLINK)/Z/Z.SCR8" "$(BEEBLINK)/Z/Z.SCR9" "$(BEEBLINK)/Z/Z.SCR10" "$(BEEBLINK)/Z/Z.SCR11" "$(BEEBLINK)/Z/Z.SCR12" "$(BEEBLINK)/Z/Z.SCR13" "$(BEEBLINK)/Z/Z.SCR14" "$(BEEBLINK)/Z/Z.SCR15"
 	$(PYTHON) "$(BEEB_BIN)/dsd_create.py" -o "$(BUILD)/screens.dsd" -0 "$(BUILD)/screens.0.ssd"
 
 ##########################################################################

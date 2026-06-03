@@ -11,9 +11,16 @@
 *=$e0
                 .dsection zx02_workspace_zp
                 .dsection fdload_workspace_zp
+
+; don't overlap with $f4.
+                .cerror *>$f4
+*=$f5
                 .dsection dfs_workspace_zp
                 .dsection loader_workspace_zp
+
+                ; don't overlap with $fc.
                 .cerror *>$fc
+*=$fd
 
 ;-------------------------------------------------------------------------
 
@@ -35,7 +42,7 @@ fdload_ram_code:
                 .cerror *>=loader_main_ram_code_end
                 .endlogical
 main_ram_stuff_unrelocated_end:
-                .cerror *>framework_bank_loader_code_end
+                .cerror *>framework_bank_loader_code_end,format('*=$%04x',*)
 
 ;-------------------------------------------------------------------------
 
@@ -58,6 +65,7 @@ framework_bank_exports: .block
 framework_rom_boot=boot
 framework_rom_prepare_load=prepare_load
 framework_rom_copy_in=copy_in
+framework_rom_error=error
 
 ; The ram_ symbols are accessible after rom_copy_in has been called.
 framework_ram_loader_load_file=loader_load_file_3 ; can we get a better name here please.
@@ -78,11 +86,209 @@ framework_zp_fdload_sector=fdload_sector
 
                 .section framework_bank_code
 
+; The initial transition is a special case, and doesn't work quite
+; like the other transitions (though there are parallels), as it
+; starts before a bunch of stuff is set up, and it runs while main RAM
+; is being cleared.
+
+initial_transition_state: .byte 0
+
+init_initial_transition: .block
+                ; N.B., this doesn't set the scroll wraparound size
+                ldx #13
+init_crtc_loop:
+                stx $fe00
+                lda crtc_2MHz,x
+                sta $fe01
+                dex
+                bpl init_crtc_loop
+
+                lda #$f4
+                sta video_ula_control
+
+                lda #0
+init_palette_loop:
+                eor #7          ; ULA colours are inverted
+                sta video_ula_palette
+                eor #7          ; undo the above
+                clc
+                adc #$11
+                bcc init_palette_loop
+
+                lda #$06
+                sta video_ula_palette
+
+                rts                
+
+crtc_2MHz:
+                .byte $7F            ; R0 - Horizontal Total
+                .byte 80             ; R1 - Horizontal Displayed
+                .byte $62            ; R2 - Horizontal Sync
+                .byte $28            ; R3 - Sync Width (%vvvvhhhh)
+                .byte $26            ; R4 - Vertical Total
+                .byte $00            ; R5 - Vertical Total Adjust
+                .byte $20            ; R6 - Vertical Displayed
+                .byte $22            ; R7 - Vertical Sync Position
+                .byte $01            ; R8 - Interlace/Delay
+                .byte $07            ; R9 - Scan lines per character
+                .byte $20            ; R10 - Cursor blink/start
+                .byte 8              ; R11 - Cursor End
+                .byte $06            ; R12 - screen start MSB
+                .byte $00            ; R13 - screen start LSB
+                .endblock
+
+update_initial_transition: .block
+                bit initial_transition_state
+                bmi update_done ; taken if transition complete
+                
+                ; page in shadow RAM
+                lda #acccon.x
+                tsb acccon
+
+                ldx #0
+                clc
+fill_row_loop:
+                lda #%00111111
+store_byte0: sta $3000+0*128,x
+store_byte1: sta $3000+1*128,x
+store_byte2: sta $3000+2*128,x
+store_byte3: sta $3000+3*128,x
+store_byte4: sta $3000+4*128,x
+                txa
+                adc #8
+                tax
+                bpl fill_row_loop
+
+                ldx #store_byte0-store_byte0
+                jsr update_addr
+                ldx #store_byte1-store_byte0
+                jsr update_addr
+                ldx #store_byte2-store_byte0
+                jsr update_addr
+                ldx #store_byte3-store_byte0
+                jsr update_addr
+                ldx #store_byte4-store_byte0
+                jsr update_addr
+update_done:
+                rts
+
+update_addr:
+                inc store_byte0+1,x
+                lda store_byte0+1,x
+                and #7
+                bne update_addr_done
+                clc
+                lda store_byte0+1,x
+                adc #<(640-8)
+                sta store_byte0+1,x
+                lda store_byte0+2,x
+                adc #>(640-8)
+                sta store_byte0+2,x
+                bpl update_addr_done
+
+                ; if any of the addresses go over $8000, the
+                ; transition is over.
+                lda #$80
+                sta initial_transition_state
+                
+update_addr_done:
+                rts
+                
+                .endblock
+
+;-------------------------------------------------------------------------
+;
+; error thing
+;
+error: .block
+                sei
+                pha
+
+                lda #$40
+                sta $0d00
+
+                lda #$d0
+                sta fdc.command
+
+                ldx #13
+init_crtc_loop:
+                stx $fe00
+                lda crtc_mode7,x
+                sta $fe01
+                dex
+                bpl init_crtc_loop
+
+                lda #$4B
+                sta video_ula_control
+
+                ; display main RAM, page in main RAM
+                lda #acccon.d|acccon.e
+                trb acccon
+
+                ldx #0
+                lda #255
+cls_loop:
+                sta $7c00,x
+                sta $7d00,x
+                sta $7e00,x
+                sta $7f00,x
+                inx
+                bne cls_loop
+
+                pla
+                sta $7c00+0*40  ; error code
+
+                lda fdload_side
+                clc
+                adc #'0'
+                sta $7c00+1*40+0
+
+                ldx #size(dfs_name_buffer)-1
+copy_dfs_name_loop:
+                lda dfs_name_buffer,x
+                sta $7c00+2*40,x
+
+                txa
+                clc
+                adc #'0'
+                sta $7c00+3*40,x
+                
+                dex
+                bpl copy_dfs_name_loop
+
+halt:
+                bra halt
+
+crtc_mode7:
+                .byte $3f       ; R0 - Horizontal Total
+                .byte $28       ; R1 - Horizontal Displayed
+                .byte $33       ; R2 - Horizontal Sync
+                .byte $24       ; R3 - Sync Width (%vvvvhhhh)
+                .byte $1e       ; R4 - Vertical Total
+                .byte $02       ; R5 - Vertical Total Adjust
+                .byte $19       ; R6 - Vertical Displayed
+                .byte $1b       ; R7 - Vertical Sync Position
+                .byte $93       ; R8 - Interlace/Delay
+                .byte $12       ; R9 - Scan lines per character
+                .byte $20       ; R10 - Cursor blink/start
+                .byte 19        ; R11 - Cursor End
+                .byte $28       ; R12 - start MSB
+                .byte $00       ; R13 - start LSB
+                .endblock 
+                
 ;-------------------------------------------------------------------------
 ;
 ; Clear memory and put system in a known state.
 ;
-; exit: RAM cleared, except for page 2
+; entry: original display mode, screen visually blank due to R1=0
+;        page 2 data copied in, including no-op IRQ routine
+;        banks 4, 5 and 6 cleared
+;        ANDY cleared
+;        HAZEL cleared
+;        main RAM contents otherwise indeterminate
+;        shadow RAM contents indeterminate
+;
+; exit: main RAM cleared, except for page 2
 ;       S=$ff
 ;       interrupts disabled
 ;       ANDY paged out
@@ -92,14 +298,45 @@ framework_zp_fdload_sector=fdload_sector
 boot: .block
                 sei
                 
-                ; page in shadow RAM
-                lda #acccon.x
+                ; can't call a routine to clear the stack! Might as
+                ; clear zero page at the same time.
+                ldx #0
+                lda #memory_clear_value
+clear_zp_and_stack_loop:
+                sta 0,x
+                sta $100,x
+                inx
+                bne clear_zp_and_stack_loop
+
+                ldx #$ff
+                txs
+                
+                ; page in shadow RAM and display shadow RAM
+                lda #acccon.x|acccon.d
                 tsb acccon
 
                 ; clear 20 KB at $3000
                 lda #$30
                 ldy #$80
                 jsr clear
+
+                ; set initial transition effect running.
+                jsr init_initial_transition
+
+                lda #<update_initial_transition
+                sta framework_transition_routine_addr+0
+                lda #>update_initial_transition
+                sta framework_transition_routine_addr+1
+
+                lda #<framework_transition_irq_handler
+                sta irq1v+0
+                lda #>framework_transition_irq_handler
+                sta irq1v+1
+
+                lda #$80|VIAIRQ.ca1
+                sta system_via.ier
+
+                cli
 
                 ; page out shadow RAM
                 lda #acccon.x
@@ -110,29 +347,16 @@ boot: .block
                 ldy #$80
                 jsr clear
 
-                ; can't call a routine to clear the stack! Might as
-                ; clear zero page at the same time.
-                ;
-                ; (X=0 and A=memory clear value from last clear call)
-clear_zp_and_stack_loop:
-                sta 0,x
-                sta $100,x
-                inx
-                bne clear_zp_and_stack_loop
-
-                ; display main RAM
-                lda #acccon.d
-                trb acccon
-
-                ldx #$ff
-                txs
+                ldx #<load_fw_block
+                ldy #>load_fw_block
+                jsr loader_load_file
 
 halt:
-                ldx #0
--
-                inc $7c00,x
-                inx
-                bne -
+;                 ldx #0
+; -
+;                 inc $7c00,x
+;                 inx
+;                 bne -
                 jmp halt
 
 clear:
@@ -152,6 +376,11 @@ clear_byte: sta $ff00,x
 
                 .endblock
 
+load_fw_block:
+                .word framework_bank_transitions_begin ; load addr
+                .byte 0                                ; drive
+                .text 'fw',13                          ; name
+
 ;-------------------------------------------------------------------------
 ;
 ; Prepare for a DFS file load.
@@ -168,6 +397,15 @@ clear_byte: sta $ff00,x
 ;       bit 7 of ?loader_decomp is set if file looks compressed
 ;       if file looks compressed, ZX02 is prepared for a multi-part decomp
 prepare_load: .block
+                ; form address of appropriate cat buffer. Each one is
+                ; 2 sectors; the drive number can act as the offset.
+                lda loader_arguments.drive
+                and #2          ; drive 0/drive 2
+                clc
+                adc #>framework_bank_cat_buffers
+                sta dfs_cat+1
+                stz dfs_cat+0
+
                 jsr dfs_find_entry
                 bcc done
 
@@ -197,8 +435,8 @@ got_load_address:
                 jsr dfs_find_entry.toupper ; ugh
                 cmp #'Z'
                 bne zx02_prepared
-
-                ; Set loader_decomp bit 7.
+                
+                ; Set loader_decomp bit 7. C=1 due to the cmp.
                 ror loader_decomp
 
                 ; Prepare ZX02.
