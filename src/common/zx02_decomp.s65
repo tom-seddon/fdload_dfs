@@ -251,6 +251,27 @@ done:
 
                 .endblock
 
+                .if zx02_decomp_enable_multi_part
+prepare_multi_part:
+                lda #<decomp.get_src_byte.multi_part
+                .byte $fc       ; 3-byte NOP (4 cycles)
+prepare_single_part:
+                lda #<decomp.get_src_byte.single_part
+repoint_get_src_byte:
+                ; should think about a table based approach at 6 - the
+                ; bytes occupied would be like 12+n for table vs 3n+1
+                ; for unrolled.
+                .cerror len(jsr_get_src_byte_addrs)>=6
+                .for _i=0,_i<len(jsr_get_src_byte_addrs),_i+=1
+                sta jsr_get_src_byte_addrs[_i]+1
+                .endfor
+                .endif
+decomp_done:
+                .if zx02_decomp_enable_multi_part
+                stz ZX0_saved_state_size
+                .endif
+                rts
+
 copy_bytes: .block
                 ldy #0
 loop:
@@ -287,28 +308,9 @@ carry:
                 .endblock
                 .endblock
 
-                .if zx02_decomp_enable_multi_part
-prepare_decomp_multi_part:
-                lda #<decomp.get_src_byte.multi_part
-                .byte $fc       ; 3-byte NOP (4 cycles)
-prepare_decomp_single_part:
-                lda #<decomp.get_src_byte.single_part
-repoint_get_src_byte:
-                ; should think about a table based approach at 6 - the
-                ; bytes occupied would be like 12+n for table vs 3n+1
-                ; for unrolled.
-                .cerror len(jsr_get_src_byte_addrs)>=6
-                .for _i=0,_i<len(jsr_get_src_byte_addrs),_i+=1
-                sta jsr_get_src_byte_addrs[_i]+1
-                .endfor
-                .endif
-decomp_done:
-                .if zx02_decomp_enable_multi_part
-                stz ZX0_saved_state_size
-                .endif
-                rts
+prepare_decomp_single_part=decomp.prepare_single_part
+prepare_decomp_multi_part=decomp.prepare_multi_part
                 
-
                 .endsection zx02_code
 
                 
