@@ -63,7 +63,7 @@ ldx #transition_zp_end-1-transition_zp_begin
 .clear_zp_loop:stz transition_zp_begin,x:dex:bpl clear_zp_loop
 .call_init:jsr $ffff
 lda #$7f:sta $fe4e		; disable all system VIA interrupts
-lda #$82:sta $fe4e		; enable system VIA CA2 (vsync)
+lda #$82:sta $fe4e		; enable system VIA CA1 (vsync)
 plx
 lda transition_update_lsbs,x:sta framework_transition_routine_addr+0
 lda transition_update_msbs,x:sta framework_transition_routine_addr+1
