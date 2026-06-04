@@ -54,6 +54,11 @@ copy_name_loop:
                 lda (dfs_name),y
                 cmp #13
                 beq copied_name
+
+                ; 0 is also a valid terminator, as I constantly get it
+                ; wrong.
+                cmp #0
+                beq copied_name
                 cpx #8
                 beq bad_name ; taken if supplied name is impossibly
                              ; long
