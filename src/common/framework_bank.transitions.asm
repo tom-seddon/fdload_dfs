@@ -48,7 +48,9 @@ guard framework_bank_transitions_end
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ; Entry points. A list of JMPs.
-jmp init_transition
+
+org $8000:jmp $8000		; boot
+org $8003:jmp init_transition	; init_transition
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 

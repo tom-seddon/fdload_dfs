@@ -140,4 +140,124 @@ handles the BRK service call, and does a bunch of stuff to close the
 Safest to just do nothing, and you'll have to deal with any surprise
 BRKs in an emulator.
 
+* old initial transition stuff
+
+#+begin_src 64tass
+                  .section initial_transition_zp
+  initial_transition_next_addr: .fill 2
+  initial_transition_addr: .fill 2
+                  .endsection
+#+end_src
+
+#+begin_src 64tass
+  init_initial_transition: .block
+                  stz initial_transition_next_addr+0
+                  lda #$30
+                  sta initial_transition_next_addr+1
+                  rts                
+                  .endblock
+
+  update_initial_transition: .block
+                  bit transition_current_state
+                  bmi update_done ; taken if transition complete
+                  
+                  ; page in shadow RAM
+                  lda #acccon.x
+                  tsb acccon
+
+                  lda initial_transition_next_addr+0
+                  sta initial_transition_addr+0
+                  lda initial_transition_next_addr+1
+                  sta initial_transition_addr+1
+
+                  ldx #80
+                  ldy #0
+  fill_row_loop:
+                  lda #%00111111
+                  sta (initial_transition_addr),y
+
+                  clc
+                  tya
+                  adc #8
+                  tay
+                  bcc +
+                  inc initial_transition_addr+1
+  +
+                  dex
+                  bne fill_row_loop
+
+                  inc initial_transition_next_addr+0
+                  lda initial_transition_next_addr+0
+                  and #7
+                  bne +
+
+                  clc
+                  lda initial_transition_next_addr+0
+                  adc #<632
+                  sta initial_transition_next_addr+0
+                  lda initial_transition_next_addr+1
+                  adc #>632
+                  sta initial_transition_next_addr+1
+                  bpl +
+
+                  sta transition_current_state ; set bit 7
+
+  +
+  update_done:
+                  rts
+                  
+
+  ;                 ldx #0
+  ;                 clc
+  ; fill_row_loop:
+  ;                 lda #%00111111
+  ; store_byte0: sta $3000+0*128,x
+  ; store_byte1: sta $3000+1*128,x
+  ; store_byte2: sta $3000+2*128,x
+  ; store_byte3: sta $3000+3*128,x
+  ; store_byte4: sta $3000+4*128,x
+  ;                 txa
+  ;                 adc #8
+  ;                 tax
+  ;                 bpl fill_row_loop
+
+  ;                 ldx #store_byte0-store_byte0
+  ;                 jsr update_addr
+  ;                 ldx #store_byte1-store_byte0
+  ;                 jsr update_addr
+  ;                 ldx #store_byte2-store_byte0
+  ;                 jsr update_addr
+  ;                 ldx #store_byte3-store_byte0
+  ;                 jsr update_addr
+  ;                 ldx #store_byte4-store_byte0
+  ;                 jsr update_addr
+  ; update_done:
+  ;                 rts
+
+  ; update_addr:
+  ;                 inc store_byte0+1,x
+  ;                 lda store_byte0+1,x
+  ;                 and #7
+  ;                 bne update_addr_done
+  ;                 clc
+  ;                 lda store_byte0+1,x
+  ;                 adc #<(640-8)
+  ;                 sta store_byte0+1,x
+  ;                 lda store_byte0+2,x
+  ;                 adc #>(640-8)
+  ;                 sta store_byte0+2,x
+  ;                 bpl update_addr_done
+
+  ;                 ; if any of the addresses go over $8000, the
+  ;                 ; transition is over.
+  ;                 lda #$80
+  ;                 sta initial_transition_state
+                  
+  ; update_done:
+  ;                 rts
+                  
+                  .endblock
+#+end_src
+
+
 * eof

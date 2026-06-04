@@ -1,3 +1,0 @@
-; Tweakable, if it'd simplify debugging.
-memory_clear_value=$00
-                

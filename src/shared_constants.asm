@@ -14,6 +14,10 @@
 framework_bank=7
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+memory_clear_value=$00
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;
 ; Zero page
 ;
@@ -91,7 +95,8 @@ loader_main_ram_code_end=$e00
 ; Loader stuff
 
 ; Load a file from disk. Copies the loader routines into main RAM,
-; seeks to the right place, then loads+uncompresses the data.
+; seeks to the right place, then loads+uncompresses the data. A
+; blocking call that will return once the data is loaded.
 ;
 ; Paging must be set up so that the parameter block can be read from
 ; and the load region can be written to.

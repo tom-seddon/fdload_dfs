@@ -5,7 +5,6 @@ zx02_decomp_enable_multi_part=false
                 .include '../shared_constants.asm'
                 .include 'zx02_decomp.s65'
                 .include '../../build/framework_bank.loader.exports.asm'
-                .include 'constants.s65'
 
 ;-------------------------------------------------------------------------
 
@@ -64,6 +63,8 @@ next_bank:
                 iny
                 cpy #8
                 bne check_swram
+
+                jsr wipe
 
                 pla             ; discard old RAM bank, now irrelevant
 
@@ -160,34 +161,23 @@ clear_swram:
                 inc framework_zp_fdload_side
                 jsr read_cat
 
-                ; do a transition of some kind.
-                ldx #40         ; assume 40 columns
-                lda $355        ; VDU variable: current mode
-                and #7          ; get fundamental mode number
-                cmp #4
-                bcs +           ; taken if mode >=4, i.e., 40 columns
-                ldx #80
-+
-wipe_loop:
-                lda #VIAIRQ.ca1
-wait_for_vsync_loop:
-                bit system_via.ifr
-                beq wait_for_vsync_loop
-                sta system_via.ifr ; acknowledge IRQ
-
-                lda #1
-                sta $fe00
-                stx $fe01
-
-                dex
-                bpl wipe_loop
-
-                ; the boot clears out the RAM. Don't leave any NMIs
-                ; pending!
+                ; the loader assumes there is no disk access ongoing!
                 jsr framework_ram_fdload_wait_not_busy
 
+;halt: jmp halt
+
+                ; load fw
+                ldx #<load_fw_args
+                ldy #>load_fw_args
+                jsr loader_load_file
+
                 ; go to the boot step.
-                jmp framework_rom_boot
+                jmp $8000
+
+load_fw_args:
+                .word $8000     ; load address
+                .byte 0         ; drive
+                .text 'fw',0    ; name
 
 read_cat:
                 ; read sector 0 then sector 1.
@@ -203,6 +193,8 @@ romy:
                 sty $f4
                 sty romsel
                 rts
+
+;-------------------------------------------------------------------------
 
 clear_pages: .block
                 sta store+2
@@ -221,11 +213,35 @@ store: sta $ff00,x
                 bne pages_loop
 
                 rts
-
-r1_table:
-                .byte 80,80,80,80 ; modes 0-3
-                .byte 40,40,40,40 ; modes 4-7
                 .endblock
+
+;-------------------------------------------------------------------------
+
+wipe: .block
+                ; do a transition of some kind.
+                ldx #40         ; assume 40 columns
+                lda $355        ; VDU variable: current mode
+                and #7          ; get fundamental mode number
+                cmp #4
+                bcs +           ; taken if mode >=4, i.e., 40 columns
+                ldx #80
++
+wipe_loop:
+                phx
+                lda #19
+                jsr osbyte
+                plx
+                
+                lda #1
+                sta $fe00
+                stx $fe01
+
+                dex
+                bpl wipe_loop
+                rts
+                .endblock    
+
+;-------------------------------------------------------------------------
 
                 .dsection zx02_code
                 
