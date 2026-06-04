@@ -14,7 +14,17 @@ import sys,os,os.path,argparse,collections
 # For better numbers from the above, some time-based mechanism for
 # tracking files actually used in the last build?
 
-# Actual support for parallel use. It might just about work as-is but 
+# Actual support for parallel use.
+
+##########################################################################
+##########################################################################
+
+g_verbose=False
+
+def pv(msg):
+    if g_verbose:
+        sys.stdout.write(msg)
+        sys.stdout.flush()
 
 ##########################################################################
 ##########################################################################
@@ -136,7 +146,14 @@ def pack_cmd(options):
 
         global subprocess
         import subprocess
-        
+
+        # Always print a note if doing optimal compression, as it's
+        # noticeably slow.
+        if g_verbose or options.optimal:
+            print('zx02tool: compressing (optimal=%d): %s'%
+                  (options.optimal,
+                   options.input_path))
+            
         returncode=run_zx02(entry.orig,
                             c_path,
                             get_txt_path(c_path),
@@ -320,6 +337,9 @@ def main(argv,argv0=None):
     if options.fun is None:
         parser.print_help()
         sys.exit(1)
+
+    global g_verbose
+    g_verbose=options.g_verbose
 
     options.fun(options)
 
