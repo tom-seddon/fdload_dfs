@@ -1,0 +1,51 @@
+                .include '../shared_constants.asm'
+                .include '../../dependencies/beeb/include/beeb.s65'
+
+*=0
+screen_index: .fill 1
+
+screens=[screen0,screen1,screen2,screen3,screen4]
+                
+*=$8000
+
+                lda #acccon.d
+                sta acccon
+
+loop:
+                ldx screen_index
+                lda screen_lsbs,x
+                sta loader_decomp_src+0
+                lda screen_msbs,x
+                sta loader_decomp_src+1
+
+                stz loader_decomp_dest+0
+                lda #$30
+                sta loader_decomp_dest+1
+
+                jsr loader_decomp_data
+
+                lda acccon
+                eor #acccon.d|acccon.x
+                sta acccon
+
+                lda screen_index
+                inc a
+                cmp #len(screens)
+                bcc +
+                lda #0
++
+                sta screen_index
+
+                jmp loop
+
+
+screen_lsbs: .byte <screens
+screen_msbs: .byte >screens
+
+screen0: .binary '../../build/screens1.screen0.dat.zx02'
+screen1: .binary '../../build/screens1.screen1.dat.zx02'
+screen2: .binary '../../build/screens1.screen2.dat.zx02'
+screen3: .binary '../../build/screens1.screen3.dat.zx02'
+screen4: .binary '../../build/screens1.screen4.dat.zx02'
+                .cerror *>$c000
+                

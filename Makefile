@@ -77,8 +77,9 @@ build: _build_dependencies
 	$(SHELLCMD) mkdir "$(BUILD)" "$(BEEBLINK)/Z"
 
 	$(MAKE) -C src/common
+	$(MAKE) -C src/screens1
 
-	$(PYTHON) "$(BEEB_BIN)/ssd_create.py" --opt4 2 -o "$(BUILD)/screens.0.ssd" "$(BEEBLINK)/Z/$$.!BOOT" "$(BUILD)/Z.FW" "$(BEEBLINK)/Z/Z.SCR0" "$(BEEBLINK)/Z/Z.SCR1" "$(BEEBLINK)/Z/Z.SCR2" "$(BEEBLINK)/Z/Z.SCR3" "$(BEEBLINK)/Z/Z.SCR4" "$(BEEBLINK)/Z/Z.SCR5" "$(BEEBLINK)/Z/Z.SCR6" "$(BEEBLINK)/Z/Z.SCR7" "$(BEEBLINK)/Z/Z.SCR8" "$(BEEBLINK)/Z/Z.SCR9" "$(BEEBLINK)/Z/Z.SCR10" "$(BEEBLINK)/Z/Z.SCR11" "$(BEEBLINK)/Z/Z.SCR12" "$(BEEBLINK)/Z/Z.SCR13" "$(BEEBLINK)/Z/Z.SCR14" "$(BEEBLINK)/Z/Z.SCR15"
+	$(PYTHON) "$(BEEB_BIN)/ssd_create.py" --strict --opt4 2 -o "$(BUILD)/screens.0.ssd" "$(BEEBLINK)/Z/$$.!BOOT" "$(BUILD)/Z.FW" "$(BUILD)/$$.SCRNS1"
 	$(PYTHON) "$(BEEB_BIN)/dsd_create.py" -o "$(BUILD)/screens.dsd" -0 "$(BUILD)/screens.0.ssd"
 
 ##########################################################################
