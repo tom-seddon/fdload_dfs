@@ -11,10 +11,9 @@
                 .dsection fdload_workspace_zp
 
 ; don't overlap with $f4.
-                .cerror *>$f4
+                .cerror *>$f4,format("$%02x",*)
 *=$f5
                 .dsection dfs_workspace_zp
-                .dsection loader_workspace_zp
 
                 ; don't overlap with $fc.
                 .cerror *>$fc
@@ -60,9 +59,7 @@ main_ram_stuff_unrelocated_end:
                 
 framework_bank_exports: .block
 ; The rom_ symbols are accessible only when the ROM is paged in.
-framework_rom_prepare_load=prepare_load
 framework_rom_copy_in=copy_in
-framework_rom_error=error
 
 ; The ram_ symbols are accessible after rom_copy_in has been called.
 framework_ram_loader_load_file=loader_load_file_3 ; can we get a better name here please.
@@ -81,12 +78,6 @@ framework_zp_fdload_sector=fdload_sector
 
 ;-------------------------------------------------------------------------
 
-                .section loader_workspace_zp
-loader_decomp: .fill 1
-                .endsection loader_workspace_zp
-
-;-------------------------------------------------------------------------
-
                 .section loader_workspace_main
 loader_arguments: .block
 
@@ -94,9 +85,14 @@ loader_arguments: .block
 ; into zero page is not supported. Sorry!)
 addr: .fill 2
 
+; romsel value for use during the load, or $ff to use current.
+bank: .fill 1
+
 ; drive to load from: 0 or 2.
 drive: .fill 1
                 .endblock
+
+loader_decomp: .fill 1
                 .endsection loader_workspace_main
 
 ;-------------------------------------------------------------------------
@@ -114,7 +110,7 @@ copy_loader_arguments_loop:
                 sta loader_arguments,y
 
                 iny
-                cpy #3
+                cpy #4
                 bne copy_loader_arguments_loop
 
                 ; save name
@@ -123,16 +119,23 @@ copy_loader_arguments_loop:
                 jsr framework_select_bank
                 phy             ; save old ROM bank
 
-                jsr framework_bank_exports.framework_rom_prepare_load
+                jsr prepare_load
 
-                bcs begin
-
-                lda #'f'
-                jmp framework_bank_exports.framework_rom_error
-
-begin:
                 pla             ; A=old ROM bank
-                sta romsel      ; reselect old ROM bank
+                pha             ; store old ROM bank
+
+                ; handle the 0 byte case.
+                lda dfs_length+0
+                ora dfs_length+1
+                beq done
+
+                ; use a different bank for the load?
+                ldx loader_arguments.bank
+                cpx #$ff        ; X=$ff means use current bank
+                beq +           ; taken if using current bank
+                txa             ; use loader arguments bank
++
+                sta romsel      ; select appropriate ROM bank for load
 
                 ; Buffer 0 is the write buffer to start with.
                 lda #>loader_main_ram_sector_buffer_0
@@ -177,7 +180,7 @@ uncompressed:
                 ; X=number of bytes to copy (or 0 to copy 256)
                 ldx #0
                 lda dfs_length+1
-                beq +
+                bne +
                 ldx dfs_length+0
 +
                 ldy #0
@@ -213,6 +216,10 @@ next:
 done:
                 ; ...
                 jsr fdload_wait_not_busy
+
+                ; restore original ROM bank
+                pla
+                sta romsel
                 
                 ; 
                 rts
@@ -374,8 +381,12 @@ prepare_load: .block
                 sta dfs_cat+1
                 stz dfs_cat+0
                 jsr dfs_find_entry
-                bcc done
+                bcs found
 
+                lda #'f'
+                jmp error
+
+found:
                 ; Sort out load address
                 lda loader_arguments.addr+1
                 beq got_load_address ; taken if file's load address should be used

@@ -8,8 +8,25 @@ screens=[screen0,screen1,screen2,screen3,screen4]
                 
 *=$8000
 
+                ldx #15
+-
+                lda mode_1_palette,x
+                sta video_ula_palette
+                dex
+                bpl -
+                
+                lda #$d8        ; mode 1
+                sta video_ula_control
+
+                lda #8
+                sta $fe00
+                stz $fe01
+
+                ; display shadow, page in main
                 lda #acccon.d
                 sta acccon
+
+                ; stz acccon
 
 loop:
                 ldx screen_index
@@ -37,7 +54,21 @@ loop:
                 sta screen_index
 
                 jmp loop
-
+                
+mode_1_palette:
+                .for i=0,i<16,i+=1
+                .block
+logical=i
+physical:=0
+                .if (i&8)!=0
+physical|=2
+                .endif
+                .if (i&2)!=0
+physical|=1
+                .endif
+                .byte logical<<4|physical^7
+                .endblock
+                .endfor
 
 screen_lsbs: .byte <screens
 screen_msbs: .byte >screens

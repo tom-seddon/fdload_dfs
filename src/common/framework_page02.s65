@@ -1,17 +1,19 @@
                 .include '../../dependencies/beeb/include/beeb.s65'
                 .include '../shared_constants.asm'
                 .include '../../build/framework_bank.loader.exports.asm'
+                .include 'constants.asm'
 
 ;-------------------------------------------------------------------------
 
+; constants.asm is not authoritative, so there's a helpful message if
+; the addresses change.
 check_addr: .macro name,wanted,got
-                .cerror (\got)!=(\wanted),format("%s mismatch: got $%04x, wanted $%04x",(\name),(\got),(\wanted))
+                .cerror (\got)!=(\wanted),format("%s mismatch: got $%04x, wanted $%04x (constants.asm might need fixing up)",(\name),(\got),(\wanted))
                 .endmacro
                 
 ;-------------------------------------------------------------------------
 
 *=$200
-
                 .cerror *!=loader_load_file
                 bra loader_load_file_impl
 
@@ -26,6 +28,9 @@ check_addr: .macro name,wanted,got
 
                 .cerror *!=loader_decomp_data_2
                 bra loader_decomp_data_2_impl
+
+                .cerror *!=framework_next_part
+                bra framework_next_part_impl
 
 framework_select_bank_impl:
                 ldy romsel
@@ -43,6 +48,17 @@ loader_decomp_data_2_impl:
                 jsr framework_ram_prepare_decomp_single_part
                 jmp framework_ram_decomp
 
+framework_next_part_impl:
+                jsr framework_select_bank_impl
+                lda framework_next_part_rts_addr+1
+                pha
+                lda framework_next_part_rts_addr+0
+                pha
+                rts
+
+                .fill $258-*,0
+                .byte 3         ; *FX200,3
+
 copy_in:
                 phx
                 phy
@@ -52,9 +68,6 @@ copy_in:
                 ply
                 plx
                 rts
-                
-                .fill $258-*,0
-                .byte 3         ; *FX200,3
 
                 .check_addr "framework_transition_irq_handler",framework_transition_irq_handler,*
 transition_irq_handler:
@@ -89,6 +102,18 @@ default_irq_handler:
                 lda $fc
                 rti
 
+framework_next_part_rts_addr: .word $8000-1
+
+framework_start_next_part_impl:
+                .check_addr "framework_start_next_part",framework_start_next_part,*
+                pla
+                sta framework_next_part_rts_addr+0
+                pla
+                sta framework_next_part_rts_addr+1
+                lda #part_main_bank
+                sta romsel
+                jmp $8000
+                
                 .fill $300-*,0
                 
                 .cerror *>$300

@@ -14,4 +14,5 @@ default:
 	$(TASS) --nostart -L "$(BUILD)/screens1.lst" -o "$(BUILD)/screens1.dat" "screens1.s65"
 
 # since it's 99% compressed data, it's not really worth compressing
-	$(SHELLCMD) copy-file "$(BUILD)/screens1.dat" "$(BUILD)/$$.SCRNS1"
+#	$(SHELLCMD) copy-file "$(BUILD)/screens1.dat" "$(BUILD)/$$.SCRNS1"
+	$(ZX02TOOL) pack "$(BUILD)/screens1.dat" -o "$(BUILD)/Z.SCRNS1"

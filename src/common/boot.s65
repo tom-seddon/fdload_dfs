@@ -107,15 +107,17 @@ clear_swram:
                 sta user_via.ier
                 sta system_via.ier
 
-                ; ; enable system VIA CA2 only
-                ; lda #$7f
-                ; sta system_via.ier
-                ; lda #$80|VIAIRQ.ca2
-                ; sta system_via.ier
+                sei
 
 ; no OS stuff available past this point.
 
-                sei
+                ; page in shadow RAM. Display shadow RAM. Clear shadow
+                ; RAM.
+                lda #acccon.x|acccon.d
+                tsb acccon
+                lda #$30
+                ldx #$80
+                jsr clear_pages
 
                 ; unpack page 2 stuff
                 lda #<framework_page02_data
@@ -164,18 +166,17 @@ clear_swram:
                 ; the loader assumes there is no disk access ongoing!
                 jsr framework_ram_fdload_wait_not_busy
 
-;halt: jmp halt
-
                 ; load fw
                 ldx #<load_fw_args
                 ldy #>load_fw_args
                 jsr loader_load_file
 
-                ; go to the boot step.
-                jmp $8000
+                ; set the whole thing going.
+                jmp framework_next_part
 
 load_fw_args:
                 .word $8000     ; load address
+                .byte framework_bank ; rom bank
                 .byte 0         ; drive
                 .text 'fw',0    ; name
 

@@ -79,7 +79,8 @@ build: _build_dependencies
 	$(MAKE) -C src/common
 	$(MAKE) -C src/screens1
 
-	$(PYTHON) "$(BEEB_BIN)/ssd_create.py" --strict --opt4 2 -o "$(BUILD)/screens.0.ssd" "$(BEEBLINK)/Z/$$.!BOOT" "$(BUILD)/Z.FW" "$(BUILD)/$$.SCRNS1"
+	$(PYTHON) "$(BEEB_BIN)/ssd_create.py" --strict --opt4 2 -o "$(BUILD)/screens.0.ssd" "$(BEEBLINK)/Z/$$.!BOOT" "$(BUILD)/Z.FW" "$(BUILD)/Z.SCRNS1"
+
 	$(PYTHON) "$(BEEB_BIN)/dsd_create.py" -o "$(BUILD)/screens.dsd" -0 "$(BUILD)/screens.0.ssd"
 
 ##########################################################################

@@ -9,3 +9,4 @@ $.DFSTEST1 diff=bbcbasic
 $.MKFILES diff=bbcbasic
 $.SHRINKY diff=bbcbasic
 $.SHRINKX diff=bbcbasic
+$.MODESWITCH diff=bbcbasic

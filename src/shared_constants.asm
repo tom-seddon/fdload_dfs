@@ -12,6 +12,9 @@
 
 ; ROM bank assignments.
 framework_bank=7
+music_bank=6
+part_other_bank=5
+part_main_bank=4
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -24,26 +27,33 @@ memory_clear_value=$00
 effect_zp_begin=$00
 effect_zp_end=$a0
 
-; 
+; reserved for use by transition effect while running. If no
+; transition effect running, this whole region can be used.
 transition_zp_begin=$a0
 transition_zp_end=$be
 
 ; indicates current state of transition, visually speaking, in some
 ; transition-dependent fashion.
+;
+; This location is also free if no transition effect running.
 transition_current_state=$be
 
 ; value reserved for requesting something of the transition, again in
 ; some transition-dependent fashion.
+;
+; This location is also free if no transition effect running.
 transition_state_request=$bf
 
-; 
+; reserved for use by music, and not available for general use.
 music_zp_begin=$c0
 music_zp_end=$e0
 
-; 
+; reserved for use by framework and loader, and not available for
+; general use except as otherwise described.
 framework_zp_begin=$e0
 framework_zp_end=$100
 
+; arguments for loader_decomp_data.
 loader_decomp_src=$e0
 loader_decomp_dest=loader_decomp_src+2
 
@@ -70,12 +80,21 @@ framework_bank_loader_code_end=$bc00
 ; Loader's main RAM layout.
 ;
 
+; loader main RAM usage for disk loading.
+;
+; When calling loader_load_file, this entire region will be
+; overwritten
 loader_main_ram_begin=$900
 loader_main_ram_end=$e00
 
 loader_main_ram_sector_buffer_0=$900 ; uses the entire page
 loader_main_ram_sector_buffer_1=$a00 ; uses the entire page
 
+; loader main RAM usage for decompression only - as above, minus the
+; disk buffers.
+;
+; When calling loader_decomp_data, this entire region will be
+; overwritten.
 loader_main_ram_code_begin=$b00
 loader_main_ram_code_end=$e00
 
@@ -92,8 +111,6 @@ loader_main_ram_code_end=$e00
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-; Loader stuff
-
 ; Load a file from disk. Copies the loader routines into main RAM,
 ; seeks to the right place, then loads+uncompresses the data. A
 ; blocking call that will return once the data is loaded.
@@ -103,7 +120,8 @@ loader_main_ram_code_end=$e00
 ;
 ; Parameter block for the load:
 ;
-; - word: load address ($0000 means use load address from catalogue)
+; - word: load address (MSB=00 means use load address from catalogue)
+; - byte: ROM bank to load into, or $ff to use current settings
 ; - byte: drive number (0 or 2)
 ; - string: file name, terminated with a 13
 ;
@@ -122,6 +140,8 @@ loader_load_file=$200
 
 ; Select the framework ROM bank.
 ;
+; TODO: is this actually generally useful??
+;
 ; Exit: Y = previously selected ROM bank
 framework_select_bank=$202
 
@@ -138,18 +158,10 @@ loader_decomp_data=$206
 ; routine has already been copied into main RAM.
 loader_decomp_data_2=$208
 
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-; These addresses refer to locations in some code assembled by 64tass.
-; If there's a mismatch, the 64tass error message will mention the
-; correct value. Assuming the discrepancy is expected, a
-; straightforward fix.
-
-; Address of transition routine to be called on each vsync.
-framework_transition_routine_addr=$0276
-
-; Address of transition routine IRQ handler.
-framework_transition_irq_handler=$259
+; Start next part.
+;
+; This doesn't return.
+framework_next_part=$20a
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ; Local Variables:

@@ -1,4 +1,5 @@
 include "../shared_constants.asm"
+include "constants.asm"
 
 VERBOSE=1
 cpu 1				; 65c02
@@ -18,13 +19,15 @@ guard framework_bank_transitions_end
 ; for the update routine to run.
 
 ; the update routine is called on the vsync interrupt (via a preamble
-; that saves/restores the 6502 registers and does a CLD). There will
-; probably be disk loading ongoing, and the non-interrupt code will be
-; decompressing stuff. So it should ideally do as little as
-; possible...
+; that saves/restores relevant state). There will probably be disk
+; loading ongoing, and the non-interrupt code will be decompressing
+; stuff. So it should ideally do as little as possible...
 
 ; there is no deinit routine. The new effect will just overwrite
 ; IRQ1V.
+
+; the preamble saves/restores all 6502 registers, and does a CLD on
+; entry, so that's all covered.
 
 ; the preamble saves/restores ACCCON, so the ACCCON shadow bits can be
 ; modified as required. The disk NMI routine doesn't require any
@@ -49,8 +52,72 @@ guard framework_bank_transitions_end
 
 ; Entry points. A list of JMPs.
 
-org $8000:jmp $8000		; next part
+org $8000:jmp boot		; boot
 org $8003:jmp init_transition	; init_transition
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+.boot
+{
+lda ula_values+2:sta $fe20
+ldx #12:.init_crtc_loop:stx $fe00:lda crtc_20KB,x:sta $fe01:dex:bpl init_crtc_loop
+
+ldx #LO(load_p0):ldy #HI(load_p0):jsr loader_load_file
+jsr framework_start_next_part
+
+; leave 
+.halt:jmp halt
+
+.load_p0
+equw $8000			; load address
+equb part_main_bank		; ROM bank
+equb 0				; drive
+equs "SCRNS1",0			; name
+}
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+.ula_values
+equb $9c			; Mode 0
+equb $d8			; Mode 1
+equb $f4			; Mode 2
+equb $9c			; Mode 3
+equb $88			; Mode 4
+equb $c4			; Mode 5
+equb $88			; Mode 6
+equb $00			; Mode 8
+
+.crtc_10KB
+equb 63			    ; R0 - H total
+equb 40			    ; R1 - H displayed
+equb 49			    ; R2 - H sync position
+equb $42		    ; R3 - Sync timings
+equb 38			    ; R4 - V total
+equb 0			    ; R5 - V total adjust
+equb 32			    ; R6 - V displayed
+equb 34			    ; R7 - V sync position
+equb $30		    ; R8 - Interlace ($30 = display disabled)
+equb 7			    ; R9 - Scanlines per row
+equb $20		    ; R10 - Cursor start/type ($20 = disabled)
+equb $00		    ; R11 - Cursor end
+equb LO($5800/8)	    ; R13 - Start LSB
+equb HI($5800/8)	    ; R12 - Start MSB
+
+.crtc_20KB
+equb 127		    ; R0 - H total
+equb 80			    ; R1 - H displayed
+equb 98			    ; R2 - H sync position
+equb $82		    ; R3 - Sync timings
+equb 38			    ; R4 - V total
+equb 0			    ; R5 - V total adjust
+equb 32			    ; R6 - V displayed
+equb 34			    ; R7 - V sync position
+equb $30		    ; R8 - Interlace ($30 = display disabled)
+equb 7			    ; R9 - Scanlines per row
+equb $20		    ; R10 - Cursor start/type ($20 = disabled)
+equb $00		    ; R11 - Cursor end
+equb HI($3000/8)	    ; R12 - Start MSB
+equb LO($3000/8)	    ; R13 - Start LSB
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
