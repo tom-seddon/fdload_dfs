@@ -34,5 +34,7 @@ fix it. Change to the working copy and do this:
 
 Change to the working copy and run `make`.
 
-The output is not very interesting... yet.
+The output is `build/screens.dsd`. Master 128 required.
 
+If running on real hardware, must be run from a floppy disk or Gotek.
+MMFS (etc.) is not supported.

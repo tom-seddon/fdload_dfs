@@ -107,6 +107,11 @@ clear_swram:
                 sta user_via.ier
                 sta system_via.ier
 
+                ; set up system VIA port B to write to the addressable
+                ; latch.
+                lda #%00001111
+                sta system_via.ddrb
+
                 sei
 
 ; no OS stuff available past this point.
