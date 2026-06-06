@@ -69,42 +69,6 @@ copy_in:
                 plx
                 rts
 
-                .check_addr "framework_transition_irq_handler",framework_transition_irq_handler,*
-transition_irq_handler:
-                lda system_via.ifr
-                bpl default_irq_handler
-
-                and #VIAIRQ.ca1 ; vsync
-                beq default_irq_handler
-
-                sta system_via.ifr ; clear interrupt flag
-                
-                cld
-                lda romsel
-                pha
-                lda acccon
-                pha
-                lda #framework_bank
-                sta romsel
-                phx
-                phy
-                
-                .check_addr "framework_transition_routine_addr",framework_transition_routine_addr,*+1
-                jsr $ffff
-                
-                ply
-                plx
-                pla
-                sta acccon
-                pla
-                sta romsel
-default_irq_handler:
-                lda $fc
-                rti
-
-framework_next_part_rts_addr: .word $8000-1
-
-framework_start_next_part_impl:
                 .check_addr "framework_start_next_part",framework_start_next_part,*
                 pla
                 sta framework_next_part_rts_addr+0
@@ -114,6 +78,73 @@ framework_start_next_part_impl:
                 sta romsel
                 jmp $8000
                 
+
+                .check_addr "framework_transition_irq_handler",framework_transition_irq_handler,*
+                lda system_via.ifr
+                bpl default_irq_handler
+
+                cld
+                phx
+                phy
+                ldx romsel
+                phx
+                ldx acccon
+                phx
+
+                bit #VIAIRQ.ca1
+                bne handle_ca1
+
+                bit #VIAIRQ.t2
+                bne handle_t2
+
+                ; if neither case is true: what a waste of time. But
+                ; that isn't suppose to happen!
+
+finish_irq:
+                pla
+                sta acccon
+                pla
+                sta romsel
+                ply
+                plx
+default_irq_handler:
+                lda $fc
+                rti
+
+handle_ca1:
+                lda #VIAIRQ.ca1
+                sta system_via.ifr
+
+t2_val=(256+(312-272))*64
+                
+                lda #<t2_val
+                sta system_via.t2c_l
+                lda #>t2_val
+                sta system_via.t2c_h
+
+                ; TODO: music...
+
+                bra finish_irq
+
+handle_t2:
+                lda #VIAIRQ.t2
+                sta system_via.ifr
+
+                lda #framework_bank
+                sta romsel
+
+                ; the vsync IRQ is coming up, and it mustn't be
+                ; missed! Enable IRQs so that it can be handled. The
+                ; interrupt routine is re-entrant, so nested
+                ; invocations are no problem.
+                cli
+                
+                .check_addr "framework_transition_routine_addr",framework_transition_routine_addr,*+1
+                jsr $ffff
+                bra finish_irq
+                
+framework_next_part_rts_addr: .word $8000-1
+
                 .fill $300-*,0
                 
                 .cerror *>$300

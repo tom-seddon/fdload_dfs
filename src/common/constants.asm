@@ -6,15 +6,15 @@
 ; straightforward fix.
 
 ; Transition routine IRQ handler.
-framework_transition_irq_handler=$267
+framework_transition_irq_handler=$277
 
 ; Vector for transition routine to be called on each vsync.
-framework_transition_routine_addr=$0284
+framework_transition_routine_addr=$02b9
 
 ; Routine that saves the return address ready for the next
 ; framework_next_part call, selects the main part bank, and jumps to
 ; $8000.
-framework_start_next_part=$295
+framework_start_next_part=$267
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ; Local Variables:
