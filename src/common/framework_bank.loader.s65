@@ -84,7 +84,10 @@ loader_arguments: .block
 
 ; if the address MSB is 0, load to the file's load address. (Loading
 ; into zero page is not supported. Sorry!)
-addr: .fill 2
+load_addr: .fill 2
+
+; if the address MSB is 0, no execution takes place.
+exec_addr: .fill 2
 
 ; romsel value for use during the load, or $ff to use current.
 bank: .fill 1
@@ -111,7 +114,7 @@ copy_loader_arguments_loop:
                 sta loader_arguments,y
 
                 iny
-                cpy #4
+                cpy #size(loader_arguments)
                 bne copy_loader_arguments_loop
 
                 ; save name
@@ -218,12 +221,19 @@ done:
                 ; ...
                 jsr fdload_wait_not_busy
 
+                ; call exec routine
+                jsr call_exec_address
+
                 ; restore original ROM bank
                 pla
                 sta romsel
                 
                 ; 
                 rts
+
+call_exec_address:
+                jmp (dfs_exec)
+                
                 .endblock
 
                 .endsection
@@ -281,8 +291,9 @@ crtc_2MHz:
 ; error thing
 ;
 error: .block
+                ; should really print these values somewhere...
                 sei
-                pha
+                pha             ; save error code
 
                 lda #$40
                 sta $0d00
@@ -302,7 +313,7 @@ init_crtc_loop:
                 sta video_ula_control
 
                 ; display main RAM, page in main RAM
-                lda #acccon.d|acccon.e
+                lda #acccon.d|acccon.x
                 trb acccon
 
                 ldx #0
@@ -389,16 +400,32 @@ prepare_load: .block
 
 found:
                 ; Sort out load address
-                lda loader_arguments.addr+1
+                lda loader_arguments.load_addr+1
                 beq got_load_address ; taken if file's load address should be used
                 sta dfs_load+1
-                lda loader_arguments.addr+0
+                lda loader_arguments.load_addr+0
                 sta dfs_load+0
 got_load_address:
                 lda dfs_load+0
                 sta ZX0_dst+0
                 lda dfs_load+1
                 sta ZX0_dst+1
+
+                ; Sort out exec address
+                lda loader_arguments.exec_addr+1
+                beq got_exec_address ; taken if file's exec address is good
+                cmp #$ff
+                bne use_loader_exec_address
+
+                ; use null exec address
+                lda #<framework_page02_rts
+                sta loader_arguments.exec_addr+0
+                lda #>framework_page02_rts
+use_loader_exec_address:
+                sta dfs_exec+1
+                lda loader_arguments.exec_addr+0
+                sta dfs_exec+0
+got_exec_address:
 
                 ; Copy DFS location.
                 lda dfs_track

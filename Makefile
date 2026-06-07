@@ -11,6 +11,8 @@ UNAME:=$(shell uname -s)
 PYTHON:=/usr/bin/python3
 endif
 
+export PYTHON
+
 ifeq ($(UNAME),Darwin)
 # The GNU Make supplied with Xcode is old. The one from Homebrew or
 # MacPorts is better, but it's called gmake.
@@ -78,8 +80,9 @@ build: _build_dependencies
 
 	$(MAKE) -C src/common
 	$(MAKE) -C src/screens1
+	$(MAKE) -C src/music
 
-	$(PYTHON) "$(BEEB_BIN)/ssd_create.py" --strict --opt4 2 -o "$(BUILD)/screens.0.ssd" "$(BEEBLINK)/Z/$$.!BOOT" "$(BUILD)/Z.FW" "$(BUILD)/Z.SCRNS1"
+	$(PYTHON) "$(BEEB_BIN)/ssd_create.py" --strict --opt4 2 -o "$(BUILD)/screens.0.ssd" "$(BEEBLINK)/Z/$$.!BOOT" "$(BUILD)/Z.FW" "$(BUILD)/Z.MUSIC" "$(BUILD)/Z.SCRNS1"
 
 	$(PYTHON) "$(BEEB_BIN)/dsd_create.py" -o "$(BUILD)/screens.dsd" -0 "$(BUILD)/screens.0.ssd"
 	$(SHELLCMD) copy-file "$(BUILD)/screens.dsd" "$(BEEBLINK)/Z/D.SCREENS"

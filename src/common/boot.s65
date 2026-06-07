@@ -174,13 +174,11 @@ clear_swram:
                 ; load fw
                 ldx #<load_fw_args
                 ldy #>load_fw_args
-                jsr loader_load_file
-
-                ; set the whole thing going.
-                jmp framework_next_part
+                jmp loader_load_file
 
 load_fw_args:
                 .word $8000     ; load address
+                .word framework_next_part ; exec address
                 .byte framework_bank ; rom bank
                 .byte 0         ; drive
                 .text 'fw',0    ; name

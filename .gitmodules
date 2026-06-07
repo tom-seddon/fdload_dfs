@@ -10,3 +10,9 @@
 [submodule "dependencies/zx02"]
 	path = dependencies/zx02
 	url = https://github.com/dmsc/zx02
+[submodule "dependencies/vgm-player-bbc"]
+	path = dependencies/vgm-player-bbc
+	url = https://github.com/simondotm/vgm-player-bbc
+[submodule "dependencies/vgm-packer"]
+	path = dependencies/vgm-packer
+	url = https://github.com/tom-seddon/vgm-packer

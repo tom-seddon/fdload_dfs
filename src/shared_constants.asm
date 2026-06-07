@@ -75,6 +75,19 @@ framework_bank_transitions_end=$b800
 framework_bank_loader_code_begin=$b700
 framework_bank_loader_code_end=$bc00
 
+; framework bank entry points.
+framework_bank_boot=$8000
+framework_bank_init_transition=$8003
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;
+; Music bank layout.
+;
+
+; music bank entry points.
+music_bank_init=$8000
+music_bank_update=$8003
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;
 ; Loader's main RAM layout.
@@ -115,15 +128,16 @@ loader_main_ram_code_end=$e00
 ; seeks to the right place, then loads+uncompresses the data. A
 ; blocking call that will return once the data is loaded.
 ;
-; Paging must be set up so that the parameter block can be read from
-; and the load region can be written to.
-;
 ; Parameter block for the load:
 ;
-; - word: load address (MSB=00 means use load address from catalogue)
-; - byte: ROM bank to load into, or $ff to use current settings
+; - word: load address (may not be zero page) (or USE_FILE_LOAD_ADDRESS to use file's)
+; - word: exec address (may not be zero page) (or USE_FILE_EXEC_ADDRESS to use file's, or NO_FILE_EXEC_ADDRESS for no exec)
+; - byte: ROM bank to select during the load, or $ff to use the current value
 ; - byte: drive number (0 or 2)
 ; - string: file name, terminated with a 13
+;
+; The exec address, if used, is called with the requested ROM bank in
+; place.
 ;
 ; The file name is English case insensitive, as per DFS: 'A'-'Z'
 ; inclusive and 'a'-'z' inclusive are considered equivalent.
@@ -137,6 +151,10 @@ loader_main_ram_code_end=$e00
 ;
 ; Entry: Y (MSB)/X (LSB) points to parameter block
 loader_load_file=$200
+
+USE_FILE_LOAD_ADDRESS=$0000
+USE_FILE_EXEC_ADDRESS=$0000
+NO_FILE_EXEC_ADDRESS=$FF00
 
 ; Start next part.
 ;
@@ -156,6 +174,8 @@ loader_decomp_data=$206
 ; routine has already been copied into main RAM.
 loader_decomp_data_2=$208
 
+; Update music. For use from an IRQ routine or whatever.
+music_update=$20a
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ; Local Variables:

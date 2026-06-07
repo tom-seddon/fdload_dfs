@@ -29,15 +29,16 @@ check_addr: .macro name,wanted,got
                 .cerror *!=loader_decomp_data_2
                 bra loader_decomp_data_2_impl
 
-                .check_addr "framework_select_bank",framework_select_bank,*
-                ldy romsel
-                lda #framework_bank
-                sta romsel
-                rts
+                .cerror *!=music_update
+                bra music_update_impl
+
+;-------------------------------------------------------------------------
 
 loader_load_file_impl:
                 jsr copy_in
                 jmp framework_ram_loader_load_file
+
+;-------------------------------------------------------------------------
 
 loader_decomp_data_impl:
                 jsr copy_in
@@ -45,16 +46,44 @@ loader_decomp_data_2_impl:
                 jsr framework_ram_prepare_decomp_single_part
                 jmp framework_ram_decomp
 
+;-------------------------------------------------------------------------
+
 framework_next_part_impl:
                 jsr framework_select_bank
                 lda framework_next_part_rts_addr+1
                 pha
                 lda framework_next_part_rts_addr+0
                 pha
+                .check_addr "framework_page02_rts",framework_page02_rts,*
                 rts
+
+;-------------------------------------------------------------------------
+
+                .check_addr "framework_select_bank",framework_select_bank,*
+                ldy romsel
+                lda #framework_bank
+                sta romsel
+                rts
+
+;-------------------------------------------------------------------------
+
+music_update_impl: .block
+                lda romsel
+                sta relda+1
+                lda #music_bank
+                sta romsel
+                jsr music_bank_update
+relda: lda #$ff
+                sta romsel
+                rts
+                .endblock
+                
+;-------------------------------------------------------------------------
 
                 .fill $258-*,0
                 .byte 3         ; *FX200,3
+
+;-------------------------------------------------------------------------
 
 copy_in:
                 phx
@@ -66,6 +95,8 @@ copy_in:
                 plx
                 rts
 
+;-------------------------------------------------------------------------
+
                 .check_addr "framework_start_next_part",framework_start_next_part,*
                 pla
                 sta framework_next_part_rts_addr+0
@@ -75,75 +106,83 @@ copy_in:
                 sta romsel
                 jmp $8000
                 
+;-------------------------------------------------------------------------
 
                 .check_addr "framework_transition_irq_handler",framework_transition_irq_handler,*
                 lda system_via.ifr
                 bpl default_irq_handler
 
+test_ca1:
+                bit #VIAIRQ.ca1
+                beq test_t2
+                
+                lda #VIAIRQ.ca1
+                sta system_via.ifr
+                ; TODO this probably wants to be configurable
+t2_val=(256+(312-272))*64
+                lda #<t2_val
+                sta system_via.t2c_l
+                lda #>t2_val
+                sta system_via.t2c_h
+                lda $fc
+                rti
+
+test_t2:
+                bit #VIAIRQ.t2
+                beq default_irq_handler
+
+                lda #VIAIRQ.t2
+                sta system_via.ifr
+
+                ; the vsync IRQ is coming up, and it mustn't be
+                ; missed! Get things ready so that IRQs can be enabled
+                ; again so that it can be handled.
+                ; 
+                ; The interrupt routine is re-entrant enough, but a
+                ; bit of care has to be taken over the A value saved
+                ; in $FC.
+                
                 cld
+                lda $fc
+                pha
                 phx
                 phy
-                ldx romsel
-                phx
-                ldx acccon
-                phx
+                lda romsel
+                pha
+                lda acccon
+                pha
 
-                bit #VIAIRQ.ca1
-                bne handle_ca1
+                cli
 
-                bit #VIAIRQ.t2
-                bne handle_t2
+                lda #music_bank
+                sta romsel
+                jsr music_bank_update
 
-                ; if neither case is true: what a waste of time. But
-                ; that isn't suppose to happen!
+                lda #framework_bank
+                sta romsel
+                .check_addr "framework_transition_routine_addr",framework_transition_routine_addr,*+1
+                jsr framework_page02_rts ; suitable null address initially
 
-finish_irq:
                 pla
                 sta acccon
                 pla
                 sta romsel
                 ply
                 plx
+                pla
+                rti
+                
 default_irq_handler:
                 lda $fc
                 rti
 
-handle_ca1:
-                lda #VIAIRQ.ca1
-                sta system_via.ifr
+;-------------------------------------------------------------------------
 
-t2_val=(256+(312-272))*64
-                
-                lda #<t2_val
-                sta system_via.t2c_l
-                lda #>t2_val
-                sta system_via.t2c_h
+framework_next_part_rts_addr: .word framework_bank_boot-1
 
-                ; TODO: music...
-
-                bra finish_irq
-
-handle_t2:
-                lda #VIAIRQ.t2
-                sta system_via.ifr
-
-                lda #framework_bank
-                sta romsel
-
-                ; the vsync IRQ is coming up, and it mustn't be
-                ; missed! Enable IRQs so that it can be handled. The
-                ; interrupt routine is re-entrant, so nested
-                ; invocations are no problem.
-                cli
-                
-                .check_addr "framework_transition_routine_addr",framework_transition_routine_addr,*+1
-                jsr $ffff
-                bra finish_irq
-                
-framework_next_part_rts_addr: .word $8000-1
+;-------------------------------------------------------------------------
 
                 .fill $300-*,0
-                
                 .cerror *>$300
 
 ;-------------------------------------------------------------------------
