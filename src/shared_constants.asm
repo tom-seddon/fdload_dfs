@@ -138,12 +138,10 @@ loader_main_ram_code_end=$e00
 ; Entry: Y (MSB)/X (LSB) points to parameter block
 loader_load_file=$200
 
-; Select the framework ROM bank.
+; Start next part.
 ;
-; TODO: is this actually generally useful??
-;
-; Exit: Y = previously selected ROM bank
-framework_select_bank=$202
+; This doesn't return.
+framework_next_part=$202
 
 ; $204 isn't free for use (it's IRQ1V)
 
@@ -158,10 +156,6 @@ loader_decomp_data=$206
 ; routine has already been copied into main RAM.
 loader_decomp_data_2=$208
 
-; Start next part.
-;
-; This doesn't return.
-framework_next_part=$20a
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ; Local Variables:

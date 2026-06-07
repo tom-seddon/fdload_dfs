@@ -17,8 +17,8 @@ check_addr: .macro name,wanted,got
                 .cerror *!=loader_load_file
                 bra loader_load_file_impl
 
-                .cerror *!=framework_select_bank
-                bra framework_select_bank_impl
+                .cerror *!=framework_next_part
+                bra framework_next_part_impl
 
                 .cerror *!=irq1v
                 .word default_irq_handler
@@ -29,10 +29,7 @@ check_addr: .macro name,wanted,got
                 .cerror *!=loader_decomp_data_2
                 bra loader_decomp_data_2_impl
 
-                .cerror *!=framework_next_part
-                bra framework_next_part_impl
-
-framework_select_bank_impl:
+                .check_addr "framework_select_bank",framework_select_bank,*
                 ldy romsel
                 lda #framework_bank
                 sta romsel
@@ -49,7 +46,7 @@ loader_decomp_data_2_impl:
                 jmp framework_ram_decomp
 
 framework_next_part_impl:
-                jsr framework_select_bank_impl
+                jsr framework_select_bank
                 lda framework_next_part_rts_addr+1
                 pha
                 lda framework_next_part_rts_addr+0

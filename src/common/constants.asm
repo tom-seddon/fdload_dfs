@@ -5,6 +5,8 @@
 ; correct value. Assuming the discrepancy is expected, a
 ; straightforward fix.
 
+framework_select_bank=$20a
+
 ; Transition routine IRQ handler.
 framework_transition_irq_handler=$277
 
