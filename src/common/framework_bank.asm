@@ -176,20 +176,14 @@ equb LO($3000/8)	    ; R13 - Start LSB
 {
 php
 sei
-phx
 lda transition_init_lsbs,x:sta call_init+1
 lda transition_init_msbs,x:sta call_init+2
+lda transition_update_lsbs,x:sta framework_transition_routine_addr+0
+lda transition_update_msbs,x:sta framework_transition_routine_addr+1
 ldx #transition_zp_end-1-transition_zp_begin
 .clear_zp_loop:stz transition_zp_begin,x:dex:bpl clear_zp_loop
 .call_init:jsr $ffff
-lda #$7f:sta $fe4e		; disable all system VIA interrupts
-lda $fe4b:and #NOT($20)AND$ff:sta $fe4b ; T2=timed interrupt
-lda #$80 OR $20 OR $92:sta $fe4e ; enable system VIA T2+CA1 (vsync)
-plx
-lda transition_update_lsbs,x:sta framework_transition_routine_addr+0
-lda transition_update_msbs,x:sta framework_transition_routine_addr+1
-lda #LO(framework_transition_irq_handler):sta $204+0
-lda #HI(framework_transition_irq_handler):sta $204+1
+jsr framework_set_default_irq_handler
 plp
 rts
 }

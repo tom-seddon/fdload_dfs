@@ -61,6 +61,7 @@ main_ram_stuff_unrelocated_end:
 framework_bank_exports: .block
 ; The rom_ symbols are accessible only when the ROM is paged in.
 framework_rom_copy_in=copy_in
+framework_rom_set_default_irq_handler=set_default_irq_handler
 
 ; The ram_ symbols are accessible after rom_copy_in has been called.
 framework_ram_loader_load_file=loader_load_file_3 ; can we get a better name here please.
@@ -484,6 +485,30 @@ _offset=main_ram_stuff_size-256
                 bne loop
                 rts
                 .endblock
+
+;-------------------------------------------------------------------------
+
+set_default_irq_handler:
+                sei
+                lda #<framework_default_irq_handler
+                sta irq1v+0
+                lda #>framework_default_irq_handler
+                sta irq1v+1
+
+                ; disable all IRQs on both VIAs
+                lda #$7f
+                sta system_via.ier
+                sta user_via.ier
+
+                ; put T2 in timed interrupt mode
+                lda #$20        ; T2 flag
+                trb system_via.pcr ; 0=timed interrupt
+
+                ; enable system VIA CA1 (vsync)+T2
+                lda #$80|VIAIRQ.ca1|VIAIRQ.t2
+                sta system_via.ier
+
+                rts
 
 ;-------------------------------------------------------------------------
 

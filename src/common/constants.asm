@@ -5,10 +5,10 @@
 ; correct value. Assuming the discrepancy is expected, a
 ; straightforward fix.
 
-framework_select_bank=$227
+framework_select_bank=$229
 
-; Transition routine IRQ handler.
-framework_transition_irq_handler=$277
+; default IRQ handler.
+framework_default_irq_handler=$277
 
 ; Vector for transition routine to be called on each vsync.
 framework_transition_routine_addr=$02b8
@@ -19,7 +19,7 @@ framework_transition_routine_addr=$02b8
 framework_start_next_part=$267
 
 ; address of an RTS instruction in page 2.
-framework_page02_rts=$226
+framework_page02_rts=$228
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ; Local Variables:

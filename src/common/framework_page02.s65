@@ -32,6 +32,9 @@ check_addr: .macro name,wanted,got
                 .cerror *!=music_update
                 bra music_update_impl
 
+                .cerror *!=framework_set_default_irq_handler
+                bra framework_set_default_irq_handler_impl
+
 ;-------------------------------------------------------------------------
 
 loader_load_file_impl:
@@ -77,6 +80,15 @@ relda: lda #$ff
                 sta romsel
                 rts
                 .endblock
+
+;-------------------------------------------------------------------------
+
+framework_set_default_irq_handler_impl:
+                php
+                jsr framework_select_bank
+                jsr framework_rom_set_default_irq_handler
+                plp
+                rts
                 
 ;-------------------------------------------------------------------------
 
@@ -108,7 +120,7 @@ copy_in:
                 
 ;-------------------------------------------------------------------------
 
-                .check_addr "framework_transition_irq_handler",framework_transition_irq_handler,*
+                .check_addr "framework_default_irq_handler",framework_default_irq_handler,*
                 lda system_via.ifr
                 bpl default_irq_handler
 

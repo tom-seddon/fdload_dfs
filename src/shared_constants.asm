@@ -177,6 +177,9 @@ loader_decomp_data_2=$208
 ; Update music. For use from an IRQ routine or whatever.
 music_update=$20a
 
+; 
+framework_set_default_irq_handler=$20c
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ; Local Variables:
 ; mode: beebasm
