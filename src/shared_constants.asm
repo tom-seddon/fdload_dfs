@@ -7,7 +7,14 @@
 ; Ranges are denoted by pairs of symbols, X_begin and X_end. _begin is
 ; inclusive and _end is exclusive.
 ;
+; Bools must be numbers, 0 (false) or other (true). beebasm only
+; accepts TRUE/FALSE, and 64tass only accepts true/false... sigh...
+;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+b2_debug=1
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ; ROM bank assignments.

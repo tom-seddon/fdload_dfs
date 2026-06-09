@@ -11,7 +11,8 @@
             "type":"config",
             "args":{
                 "base_default_config":"Master 128 (MOS 3.50)",
-		"boot":true
+		"boot":true,
+		"debug_ports":true
             }
         }
     ]

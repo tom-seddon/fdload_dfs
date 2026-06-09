@@ -74,14 +74,13 @@ sta $fe4d
 
 lda #8:sta $fe00:stz $fe01
 
-ldx #1:jsr $8003
+ldx #6:jsr $8003
 
 cli
 
 .load_loop
 ldx #LO(load_p0):ldy #HI(load_p0):jsr loader_load_file
-lda $f0ff			; b2 trace marker
-jmp load_loop
+bra load_loop
 ; jsr framework_start_next_part
 
 ; leave 
@@ -203,8 +202,12 @@ ENDMACRO
 ; Add new entries following the existing examples.
 MACRO transition_toc table
 transition table,init_null,update_null			    ; 0
-transition table,init_wipe_down_640,update_wipe_down_main ; 1
-transition table,init_wipe_down_640,update_wipe_down_shadow ; 2
+transition table,wipe_down_init_640,wipe_down_update_main   ; 1
+transition table,wipe_down_init_640,wipe_down_update_shadow ; 2
+transition table,snake_init_rows,snake_update		    ; 3
+transition table,snake_init_columns,snake_update	    ; 4
+transition table,snake_init_rows_bnf,snake_update	    ; 5
+transition table,snake_init_columns_bnf,snake_update	    ; 6
 ENDMACRO
 
 .transition_init_lsbs:transition_toc 0
@@ -232,7 +235,7 @@ wipe_down_colour=transition_zp_begin+6
 wipe_down_reset_addr=transition_zp_begin+7
 wipe_down_value=transition_zp_begin+9
 
-.init_wipe_down_640
+.wipe_down_init_640
 lda #1:sta wipe_down_colour
 stz wipe_down_reset_addr+0:lda #$30:sta wipe_down_reset_addr+1
 ;lda #LO(640):sta wipe_down_stride+0:lda #HI(640):sta wipe_down_stride+1
@@ -243,11 +246,11 @@ lda wipe_down_reset_addr+0:sta wipe_down_addr+0
 lda wipe_down_reset_addr+1:sta wipe_down_addr+1
 rts
 
-.update_wipe_down_main
+.wipe_down_update_main
 lda #2:trb $fe34		; page in main RAM
 bra update_wipe_down
 
-.update_wipe_down_shadow
+.wipe_down_update_shadow
 lda #2:tsb $fe34		; page in shadow RAM
 ; fall through to update_wipe_down
 
@@ -286,6 +289,146 @@ inc wipe_down_addr+1
 .done
 rts
 }
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;
+; Snake effect - divides screen into a 10x16 grid.
+;
+snake_index=transition_zp_begin+0
+snake_pattern=transition_zp_begin+1
+snake_head_colour_a=transition_zp_begin+3
+snake_head_colour_b=transition_zp_begin+4
+snake_tail_colour_a=transition_zp_begin+5
+snake_tail_colour_b=transition_zp_begin+6
+
+snake_byte_a=transition_zp_begin+7
+snake_byte_b=transition_zp_begin+8
+snake_plot_addr_a=transition_zp_begin+9
+snake_plot_addr_b=transition_zp_begin+11
+; +13
+
+.snake_init_rows:ldx #LO(snake_pattern_rows):ldy #HI(snake_pattern_rows):bra snake_init_generic
+.snake_init_rows_bnf:ldx #LO(snake_pattern_rows_bnf):ldy #HI(snake_pattern_rows_bnf):bra snake_init_generic
+.snake_init_columns:ldx #LO(snake_pattern_columns):ldy #HI(snake_pattern_columns):bra snake_init_generic
+.snake_init_columns_bnf:ldx #LO(snake_pattern_columns_bnf):ldy #HI(snake_pattern_columns_bnf):bra snake_init_generic
+
+.snake_init_generic
+{
+stx snake_pattern+0:sty snake_pattern+1
+
+stz snake_index
+lda #7:sta snake_head_colour_a
+lda #0:sta snake_head_colour_b
+
+lda #1:sta snake_tail_colour_a
+lda #1:sta snake_tail_colour_b
+rts
+}
+
+.snake_update
+{
+ldy snake_index:cpy #160:bcs done_head
+ldx #snake_head_colour_a:jsr snake_plot
+.done_head
+ldy snake_index:beq done_tail
+dey:ldx #snake_tail_colour_a:jsr snake_plot
+.done_tail
+inc snake_index
+lda snake_index
+cmp #160+1
+bcc done
+stz snake_index
+ldx #snake_tail_colour_a:jsr next_colour
+inx:jsr next_colour
+.done
+rts
+
+.next_colour
+lda 0,x:inc a:and #7:sta 0,x
+rts
+}
+
+; (snake_pattern),y=location
+; X=colour a/b ZP address
+.snake_plot
+{
+lda (snake_pattern),y:tay
+lda snake_table_lsbs,y:sta snake_plot_addr_a+0
+clc:adc #LO(640):sta snake_plot_addr_b+0
+lda snake_table_msbs,y:sta snake_plot_addr_a+1
+adc #HI(640):sta snake_plot_addr_b+1
+; form %abababab; X=%0a0a0a0a
+ldy 0,x:lda colour_table,y:asl a:ldy 1,x:ora colour_table,y:sta snake_byte_a
+lda colour_table,y:asl a:ldy 0,x:ora colour_table,y:sta snake_byte_b
+ldy #63:lda snake_byte_a:jsr plot2
+ldy #62:lda snake_byte_b
+.plot2
+sta (snake_plot_addr_a),y:sta (snake_plot_addr_b),y:dey:dey
+sta (snake_plot_addr_a),y:sta (snake_plot_addr_b),y:dey:dey
+sta (snake_plot_addr_a),y:sta (snake_plot_addr_b),y:dey:dey
+sta (snake_plot_addr_a),y:sta (snake_plot_addr_b),y:dey:dey
+bpl plot2
+rts
+}
+; tax:ldy snake_table_msbs,x:sta snake_plot_addr_a+1
+; and #3:tax:lda snake_table_lsbs,x:sta snake_plot_addr_a+0
+; clc:adc #LO(640):sta snake_plot_addr_b+0
+; lda snake_plot_addr_a+1:adc #HI(640):sta snake_plot_addr_b+1
+; ldx snake_plot_colour:lda colour_table,x:asl a:ora colour_table,x
+; ldy #63
+; .fill_loop
+; sta (snake_plot_addr_a),y:sta (snake_plot_addr_b),y:dey
+; sta (snake_plot_addr_a),y:sta (snake_plot_addr_b),y:dey
+; sta (snake_plot_addr_a),y:sta (snake_plot_addr_b),y:dey
+; sta (snake_plot_addr_a),y:sta (snake_plot_addr_b),y:dey
+; bpl fill_loop
+; rts
+; }
+
+MACRO snake_table_entry index,shift
+ASSERT shift==0 OR shift==8
+ASSERT index>=0 AND index<160
+EQUB (($3000+(index MOD 10)*64+(index DIV 10)*1280)>>shift)AND$ff
+ENDMACRO
+
+.snake_table_lsbs:FOR i,0,159:snake_table_entry i,0:NEXT
+.snake_table_msbs:FOR i,0,159:snake_table_entry i,8:NEXT
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+.snake_pattern_rows
+FOR y,0,15
+FOR x,0,9
+EQUB y*10+x
+NEXT
+NEXT
+ASSERT P%-snake_pattern_rows==160
+
+.snake_pattern_rows_bnf
+FOR y,0,15
+FOR x,0,9
+IF (y AND 1)==0:EQUB y*10+x:ELSE:EQUB y*10+(9-x):ENDIF
+NEXT
+NEXT
+ASSERT P%-snake_pattern_rows_bnf==160
+
+.snake_pattern_columns
+FOR x,0,9
+FOR y,0,15
+EQUB y*10+x
+NEXT
+NEXT
+ASSERT P%-snake_pattern_columns==160
+
+.snake_pattern_columns_bnf
+FOR x,0,9
+FOR y,0,15
+IF (x AND 1)==0:EQUB y*10+x:ELSE:EQUB (15-y)*10+x:ENDIF
+NEXT
+NEXT
+ASSERT P%-snake_pattern_columns_bnf==160
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 .colour_table
 equb %00000000

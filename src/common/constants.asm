@@ -11,7 +11,7 @@ framework_select_bank=$229
 framework_default_irq_handler=$277
 
 ; Vector for transition routine to be called on each vsync.
-framework_transition_routine_addr=$02b8
+framework_transition_routine_addr=$02c2
 
 ; Routine that saves the return address ready for the next
 ; framework_next_part call, selects the main part bank, and jumps to

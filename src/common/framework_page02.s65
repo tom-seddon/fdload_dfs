@@ -131,7 +131,8 @@ test_ca1:
                 lda #VIAIRQ.ca1
                 sta system_via.ifr
                 ; TODO this probably wants to be configurable
-t2_val=(256+(312-272))*64
+;t2_val=(256+(312-272))*64
+t2_val=260*64
                 lda #<t2_val
                 sta system_via.t2c_l
                 lda #>t2_val
@@ -166,14 +167,28 @@ test_t2:
 
                 cli
 
+                .if b2_debug!=0
+                lda #2          ; green=music
+                sta $fc5d
+                .endif
+
                 lda #music_bank
                 sta romsel
                 jsr music_bank_update
+
+                .if b2_debug!=0
+                lda #1          ; red=transition
+                sta $fc5d
+                .endif
 
                 lda #framework_bank
                 sta romsel
                 .check_addr "framework_transition_routine_addr",framework_transition_routine_addr,*+1
                 jsr framework_page02_rts ; suitable null address initially
+
+                .if b2_debug!=0
+                stz $fc5d       ; reset border colour
+                .endif
 
                 pla
                 sta acccon
