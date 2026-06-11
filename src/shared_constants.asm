@@ -61,8 +61,8 @@ framework_zp_begin=$e0
 framework_zp_end=$100
 
 ; arguments for loader_decomp_data.
-loader_decomp_src=$e0
-loader_decomp_dest=loader_decomp_src+2
+framework_decomp_src=$e0
+framework_decomp_dest=framework_decomp_src+2
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ; 
@@ -79,8 +79,8 @@ framework_bank_transitions_begin=$8000
 framework_bank_transitions_end=$b800
 
 ; Where the framework bank loader code goes. 
-framework_bank_loader_code_begin=$b700
-framework_bank_loader_code_end=$bc00
+framework_bank_loader_code_begin=$b600
+framework_bank_loader_code_end=$bd00
 
 ; framework bank entry points.
 framework_bank_boot=$8000
@@ -157,7 +157,7 @@ loader_main_ram_code_end=$e00
 ; it will be loaded verbatim.
 ;
 ; Entry: Y (MSB)/X (LSB) points to parameter block
-loader_load_file=$200
+framework_load_file=$200
 
 USE_FILE_LOAD_ADDRESS=$0000
 USE_FILE_EXEC_ADDRESS=$0000
@@ -175,14 +175,14 @@ framework_next_part=$202
 ;
 ; Entry: (loader_decomp_src)=address to unpack from
 ;        (loader_decomp_dest)=address to unpack to
-loader_decomp_data=$206
+framework_decomp_data=$206
 
 ; Decompress data. Just as loader_decomp_data, for use when the loader
 ; routine has already been copied into main RAM.
-loader_decomp_data_2=$208
+framework_decomp_data_2=$208
 
 ; Update music. For use from an IRQ routine or whatever.
-music_update=$20a
+framework_update_music=$20a
 
 ; 
 framework_set_default_irq_handler=$20c

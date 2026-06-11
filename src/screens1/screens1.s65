@@ -37,15 +37,15 @@ screens=[screen0,screen1,screen2,screen3,screen4]
 loop:
                 ldx screen_index
                 lda screen_lsbs,x
-                sta loader_decomp_src+0
+                sta framework_decomp_src+0
                 lda screen_msbs,x
-                sta loader_decomp_src+1
+                sta framework_decomp_src+1
 
-                stz loader_decomp_dest+0
+                stz framework_decomp_dest+0
                 lda #$30
-                sta loader_decomp_dest+1
+                sta framework_decomp_dest+1
 
-                jsr loader_decomp_data
+                jsr framework_decomp_data
 
                 lda acccon
                 eor #acccon.d|acccon.x

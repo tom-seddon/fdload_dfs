@@ -3,7 +3,6 @@
                 .include 'dfs.s65'
                 .include 'zx02_decomp.s65'
                 .include 'fdload.s65'
-                .include 'constants.asm'
 
 ;-------------------------------------------------------------------------
 
@@ -51,17 +50,18 @@ main_ram_stuff_unrelocated_end:
 ; explicit constant in shared_constants.asm and a .cerror here to make
 ; sure they don't get out of line.
 
-                .cerror ZX0_src!=loader_decomp_src
-                .cerror ZX0_dst!=loader_decomp_dest
+                .cerror ZX0_src!=framework_decomp_src
+                .cerror ZX0_dst!=framework_decomp_dest
                 
 ;-------------------------------------------------------------------------
 
-; these symbols are exported for use by other 64tass files.
+; these symbols are exported for use by BeebAsm.
                 
 framework_bank_exports: .block
 ; The rom_ symbols are accessible only when the ROM is paged in.
 framework_rom_copy_in=copy_in
 framework_rom_set_default_irq_handler=set_default_irq_handler
+framework_rom_page02_unrelocated=page02_unrelocated
 
 ; The ram_ symbols are accessible after rom_copy_in has been called.
 framework_ram_loader_load_file=loader_load_file_3 ; can we get a better name here please.
@@ -76,6 +76,10 @@ framework_zp_fdload_track=fdload_track
 framework_zp_fdload_addr_msb=fdload_addr_msb
 framework_zp_fdload_side=fdload_side
 framework_zp_fdload_sector=fdload_sector
+
+; The page02_ symbols are in page $02.
+framework_page02_transition_routine_addr=page02_standard_irq_handler.transition_routine_addr
+framework_page02_start_next_part=page02_start_next_part
                 .endblock
 
 ;-------------------------------------------------------------------------
@@ -121,7 +125,7 @@ copy_loader_arguments_loop:
                 ; save name
                 jsr dfs_copy_name
 
-                jsr framework_select_bank
+                jsr page02_select_bank
                 phy             ; save old ROM bank
 
                 jsr prepare_load
@@ -241,7 +245,6 @@ call_exec_address:
                 
 ;-------------------------------------------------------------------------
 
-                
                 .section framework_bank_code
 
 set_mode_2: .block
@@ -419,9 +422,9 @@ got_load_address:
                 bne use_loader_exec_address
 
                 ; use null exec address
-                lda #<framework_page02_rts
+                lda #<page02_rts
                 sta loader_arguments.exec_addr+0
-                lda #>framework_page02_rts
+                lda #>page02_rts
 use_loader_exec_address:
                 sta dfs_exec+1
                 lda loader_arguments.exec_addr+0
@@ -490,9 +493,9 @@ _offset=main_ram_stuff_size-256
 
 set_default_irq_handler:
                 sei
-                lda #<framework_default_irq_handler
+                lda #<page02_standard_irq_handler ; TODO: fix naming
                 sta irq1v+0
-                lda #>framework_default_irq_handler
+                lda #>page02_standard_irq_handler
                 sta irq1v+1
 
                 ; disable all IRQs on both VIAs
@@ -512,5 +515,210 @@ set_default_irq_handler:
 
 ;-------------------------------------------------------------------------
 
-                .endsection framework_bank_code
+page02_unrelocated:
+                .logical $200
                 
+                .cerror *!=framework_load_file
+                bra page02_load_file
+
+                .cerror *!=framework_next_part
+                bra page02_next_part
+
+                .cerror *!=irq1v
+                .word page02_standard_irq_handler
+
+                .cerror *!=framework_decomp_data
+                bra page02_decomp_data
+
+                .cerror *!=framework_decomp_data_2
+                bra page02_decomp_data_2
+
+                .cerror *!=framework_update_music
+                bra page02_update_music
+
+                .cerror *!=framework_set_default_irq_handler
+                bra page02_set_default_irq_handler
+
+;-------------------------------------------------------------------------
+
+page02_load_file:
+                jsr page02_copy_in
+                jmp loader_load_file_3
+
+;-------------------------------------------------------------------------
+
+page02_decomp_data:
+                jsr page02_copy_in
+page02_decomp_data_2:
+                jsr prepare_decomp_single_part
+                jmp decomp
+
+;-------------------------------------------------------------------------
+
+page02_next_part:
+                jsr page02_select_bank
+                lda page02_next_part_rts_addr+1
+                pha
+                lda page02_next_part_rts_addr+0
+                pha
+page02_rts:
+                rts
+
+;-------------------------------------------------------------------------
+
+page02_select_bank:
+                ldy romsel
+                lda #framework_bank
+                sta romsel
+                rts
+
+;-------------------------------------------------------------------------
+
+page02_update_music: .block
+                lda romsel
+                sta relda+1
+                lda #music_bank
+                sta romsel
+                jsr music_bank_update
+relda: lda #$ff
+                sta romsel
+                rts
+                .endblock
+
+;-------------------------------------------------------------------------
+
+page02_set_default_irq_handler:
+                php
+                jsr page02_select_bank
+                jsr set_default_irq_handler
+                plp
+                rts
+                
+;-------------------------------------------------------------------------
+
+                .fill $258-*,0
+                .byte 3         ; *FX200,3
+
+;-------------------------------------------------------------------------
+
+page02_copy_in:
+                phx
+                phy
+                jsr page02_select_bank
+                jsr copy_in
+                sty romsel
+                ply
+                plx
+                rts
+
+;-------------------------------------------------------------------------
+
+page02_start_next_part:
+                pla
+                sta page02_next_part_rts_addr+0
+                pla
+                sta page02_next_part_rts_addr+1
+                lda #part_main_bank
+                sta romsel
+                jmp $8000
+                
+;-------------------------------------------------------------------------
+
+page02_standard_irq_handler: .block
+                lda system_via.ifr
+                bpl page02_null_irq_handler
+
+test_ca1:
+                bit #VIAIRQ.ca1
+                beq test_t2
+                
+                lda #VIAIRQ.ca1
+                sta system_via.ifr
+                ; TODO this probably wants to be configurable
+;t2_val=(256+(312-272))*64
+t2_val=260*64
+                lda #<t2_val
+                sta system_via.t2c_l
+                lda #>t2_val
+                sta system_via.t2c_h
+                lda $fc
+                rti
+
+test_t2:
+                bit #VIAIRQ.t2
+                beq page02_null_irq_handler
+
+                lda #VIAIRQ.t2
+                sta system_via.ifr
+
+                ; the vsync IRQ is coming up, and it mustn't be
+                ; missed! Get things ready so that IRQs can be enabled
+                ; again so that it can be handled.
+                ; 
+                ; The interrupt routine is re-entrant enough, but a
+                ; bit of care has to be taken over the A value saved
+                ; in $FC.
+                
+                cld
+                lda $fc
+                pha
+                phx
+                phy
+                lda romsel
+                pha
+                lda acccon
+                pha
+
+                cli
+
+                .if b2_debug!=0
+                lda #2          ; green=music
+                sta $fc5d
+                .endif
+
+                lda #music_bank
+                sta romsel
+                jsr music_bank_update
+
+                .if b2_debug!=0
+                lda #1          ; red=transition
+                sta $fc5d
+                .endif
+
+                lda #framework_bank
+                sta romsel
+transition_routine_addr=*+1
+                jsr page02_rts ; suitable null address initially
+
+                .if b2_debug!=0
+                stz $fc5d       ; reset border colour
+                .endif
+
+                pla
+                sta acccon
+                pla
+                sta romsel
+                ply
+                plx
+                pla
+                rti
+                .endblock
+                
+page02_null_irq_handler:
+                lda $fc
+                rti
+
+;-------------------------------------------------------------------------
+
+page02_next_part_rts_addr: .word framework_bank_boot-1
+
+;-------------------------------------------------------------------------
+
+                .fill $300-*,0
+                .endlogical
+                .cerror *-page02_unrelocated!=256
+
+                .endsection framework_bank_code
+
+;-------------------------------------------------------------------------
+ 

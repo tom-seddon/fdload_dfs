@@ -1,5 +1,5 @@
 include "../shared_constants.asm"
-include "constants.asm"
+include "../../build/framework_bank.loader.exports.asm"
 
 VERBOSE=1
 cpu 1				; 65c02
@@ -59,7 +59,7 @@ org framework_bank_init_transition:jmp init_transition	; init_transition
 
 .boot
 {
-ldx #lo(load_music):ldy #hi(load_music):jsr loader_load_file
+ldx #lo(load_music):ldy #hi(load_music):jsr framework_load_file
 
 
 lda ula_values+2:sta $fe20
@@ -79,7 +79,7 @@ ldx #6:jsr $8003
 cli
 
 .load_loop
-ldx #LO(load_p0):ldy #HI(load_p0):jsr loader_load_file
+ldx #LO(load_p0):ldy #HI(load_p0):jsr framework_load_file
 bra load_loop
 ; jsr framework_start_next_part
 
@@ -177,8 +177,8 @@ php
 sei
 lda transition_init_lsbs,x:sta call_init+1
 lda transition_init_msbs,x:sta call_init+2
-lda transition_update_lsbs,x:sta framework_transition_routine_addr+0
-lda transition_update_msbs,x:sta framework_transition_routine_addr+1
+lda transition_update_lsbs,x:sta framework_page02_transition_routine_addr+0
+lda transition_update_msbs,x:sta framework_page02_transition_routine_addr+1
 ldx #transition_zp_end-1-transition_zp_begin
 .clear_zp_loop:stz transition_zp_begin,x:dex:bpl clear_zp_loop
 .call_init:jsr $ffff

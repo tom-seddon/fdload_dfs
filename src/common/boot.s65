@@ -124,18 +124,6 @@ clear_swram:
                 ldx #$80
                 jsr clear_pages
 
-                ; unpack page 2 stuff
-                lda #<framework_page02_data
-                sta ZX0_src+0
-                lda #>framework_page02_data
-                sta ZX0_src+1
-
-                stz ZX0_dst+0
-                lda #2
-                sta ZX0_dst+1
-
-                jsr decomp
-
                 ; unpack ROM stuff
                 lda #<framework_bank_loader_data
                 sta ZX0_src+0
@@ -148,6 +136,14 @@ clear_swram:
                 sta ZX0_dst+1
 
                 jsr decomp
+
+                ; copy page 2 stuff.
+                ldx #0
+copy_page02_loop:
+                lda framework_rom_page02_unrelocated,x
+                sta $200,x
+                inx
+                bne copy_page02_loop
 
                 ; copy loader code in.
                 jsr framework_rom_copy_in
@@ -174,7 +170,7 @@ clear_swram:
                 ; load fw
                 ldx #<load_fw_args
                 ldy #>load_fw_args
-                jmp loader_load_file
+                jmp framework_load_file
 
 load_fw_args:
                 .word $8000     ; load address
@@ -249,9 +245,6 @@ wipe_loop:
 
                 .dsection zx02_code
                 
-framework_page02_data:
-                .binary '../../build/framework_page02.dat.zx02'
-
 framework_bank_loader_data:
                 .binary '../../build/framework_bank.loader.dat.zx02'
                 
