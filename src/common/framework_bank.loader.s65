@@ -55,7 +55,8 @@ main_ram_stuff_unrelocated_end:
                 
 ;-------------------------------------------------------------------------
 
-; these symbols are exported for use by BeebAsm.
+; these symbols are exported for use by the BeebAsm part of the ROM
+; code.
                 
 framework_bank_exports: .block
 ; The rom_ symbols are accessible only when the ROM is paged in.
@@ -78,8 +79,10 @@ framework_zp_fdload_side=fdload_side
 framework_zp_fdload_sector=fdload_sector
 
 ; The page02_ symbols are in page $02.
-framework_page02_transition_routine_addr=page02_standard_irq_handler.transition_routine_addr
+framework_page02_transition_t2_routine_addr=page02_standard_irq_handler.transition_t2_routine_addr
 framework_page02_start_next_part=page02_start_next_part
+framework_page02_transition_vsync_routine_addr=page02_standard_irq_handler.transition_vsync_routine_addr
+framework_page02_bra_skip_vsync=page02_standard_irq_handler.bra_skip_vsync
                 .endblock
 
 ;-------------------------------------------------------------------------
@@ -641,6 +644,28 @@ t2_val=260*64
                 sta system_via.t2c_l
                 lda #>t2_val
                 sta system_via.t2c_h
+
+bra_skip_vsync:
+                ; can be replaced with $02 (NOP #xx) to have the next
+                ; bit of code executed. Reinstate $80 (BRA rel) to
+                ; have it skip the vsync bit.
+                bra vsync_done
+
+                cld
+                phx
+                phy
+                lda romsel
+                pha
+
+transition_vsync_routine_addr=*+1
+                jsr $0000       ; no useful address needed
+
+                pla
+                sta romsel
+                ply
+                plx
+
+vsync_done:
                 lda $fc
                 rti
 
@@ -685,9 +710,12 @@ test_t2:
                 sta $fc5d
                 .endif
 
+                ; unlike the vsync handler, there's no skip case here.
+                ; The handler has to do a bunch of work for the music.
+                ; In for a penny...
                 lda #framework_bank
                 sta romsel
-transition_routine_addr=*+1
+transition_t2_routine_addr=*+1
                 jsr page02_rts ; suitable null address initially
 
                 .if b2_debug!=0
