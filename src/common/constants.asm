@@ -1,6 +1,9 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ; These addresses refer to locations in some code assembled by 64tass.
+; The addresses can't be auto-generated, because two of the 64tass
+; source files are mutually dependent.
+; 
 ; If there's a mismatch, the 64tass error message will mention the
 ; correct value. Assuming the discrepancy is expected, a
 ; straightforward fix.

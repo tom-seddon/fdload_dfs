@@ -82,7 +82,7 @@ build: _build_dependencies
 	$(MAKE) -C src/screens1
 	$(MAKE) -C src/music
 
-	$(PYTHON) "$(BEEB_BIN)/ssd_create.py" --strict --opt4 2 -o "$(BUILD)/screens.0.ssd" "$(BEEBLINK)/Z/$$.!BOOT" "$(BUILD)/Z.FW" "$(BUILD)/Z.MUSIC" "$(BUILD)/Z.SCRNS1"
+	$(PYTHON) "$(BEEB_BIN)/ssd_create.py" --strict --opt4 2 -o "$(BUILD)/screens.0.ssd" "$(BEEBLINK)/Z/$$.!BOOT" "$(BUILD)/Z.FW" "$(BUILD)/Z.MUSIC" "$(BUILD)/Z.SCRNS11" "$(BUILD)/Z.SCRNS15"
 
 	$(PYTHON) "$(BEEB_BIN)/dsd_create.py" -o "$(BUILD)/screens.dsd" -0 "$(BUILD)/screens.0.ssd"
 	$(SHELLCMD) copy-file "$(BUILD)/screens.dsd" "$(BEEBLINK)/Z/D.SCREENS"

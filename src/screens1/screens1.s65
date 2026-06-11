@@ -14,8 +14,14 @@ screens=[screen0,screen1,screen2,screen3,screen4]
                 sta video_ula_palette
                 dex
                 bpl -
-                
+
+                .if MODE==1
                 lda #$d8        ; mode 1
+                .elif MODE==5
+                lda #$c4        ; mode 5
+                .else
+                .error 
+                .endif
                 sta video_ula_control
 
                 lda #8
@@ -73,10 +79,12 @@ physical|=1
 screen_lsbs: .byte <screens
 screen_msbs: .byte >screens
 
-screen0: .binary '../../build/screens1.screen0.dat.zx02'
-screen1: .binary '../../build/screens1.screen1.dat.zx02'
-screen2: .binary '../../build/screens1.screen2.dat.zx02'
-screen3: .binary '../../build/screens1.screen3.dat.zx02'
-screen4: .binary '../../build/screens1.screen4.dat.zx02'
+screen_path: .sfunction _index,format("../../build/screens1.screen%d.mode%d.dat.zx02",_index,MODE)
+                
+screen0: .binary screen_path(0)
+screen1: .binary screen_path(1)
+screen2: .binary screen_path(2)
+screen3: .binary screen_path(3)
+screen4: .binary screen_path(4)
                 .cerror *>$c000
                 

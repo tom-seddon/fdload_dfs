@@ -98,7 +98,7 @@ equw $8000			; load address
 equw NO_FILE_EXEC_ADDRESS	; no exec address
 equb part_main_bank		; ROM bank
 equb 0				; drive
-equs "SCRNS1",0			; name
+equs "SCRNS11",0		; name
 }
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
