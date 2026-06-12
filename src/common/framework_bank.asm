@@ -321,7 +321,6 @@ equb %00001101		  ; page in HAZEL, page in shadow, show shadow
 
 .init_transition
 {
-php
 sei
 
 lda transition_init_lsbs,x:sta call_init+1
@@ -368,11 +367,18 @@ stz transition_current_state
 ; init transition effect, and set up default IRQ handler.
 .call_init:jsr $ffff
 jsr framework_set_default_irq_handler
-plp
+cli
 rts
 }
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+; init: routine to call when transition is initialised
+; 
+; update_t2: routine to call on T2 timeout, at bottom of visible
+; display area (may be 0 if no such)
+;
+; update_vsync: routine to call on vsync (may be 0 if no such)
 
 MACRO transition table,init,update_t2,update_vsync
 IF table==0:EQUB LO(init)

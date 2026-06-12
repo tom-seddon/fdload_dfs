@@ -14,9 +14,12 @@ TODO: there is currently no adjustment to ensure the transition effect
 always runs outside the visible area, but I think it will be possible
 to do this by polling T2.
 
-# Other IRQ handler
+# Other/no IRQ handler
 
-If using another IRQ handler, set IRQ1V as normal.
+If using another IRQ handler, set IRQ1V as normal. If using none, just
+`sei` and then do whatever. The only thing that needs to happen
+continually is `framework_update_music`, which must be called at 50 Hz
+to keep the music going.
 
 To reinstate the default IRQ handler, do `jsr
 framework_set_default_irq_handler`. This will install the handler,

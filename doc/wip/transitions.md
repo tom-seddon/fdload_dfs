@@ -19,7 +19,8 @@ right one in).
 
 ## Part exit state
 
-Each part should leave the screen in a standard Mode 2 or Mode 8 setup:
+Each part should leave the screen in a standard Mode 2 (TODO: or Mode
+8) setup:
 
 - 80 (Mode 2)/40 (Mode 8) CRTC columns
 - 32 CRTC rows
@@ -27,24 +28,22 @@ Each part should leave the screen in a standard Mode 2 or Mode 8 setup:
 - Start address $3000 (Mode 2)/$5800 (Mode 8)
 - Wrap size 20 KB (Mode 2)/10 KB (Mode 8)
 - Default palette
-- Default IRQ handler installed
 
 The framework looks after starting the transition.
 
 ## Part entry state
 
-As above. The transition will be ongoing. Poll
-`transition_current_state` - when bit 7 is set, the screen is
+As above. The transition will be ongoing, with interrupts enabled.
+Poll `transition_current_state` - when bit 7 is set, the screen is
 currently filled with a solid colour, and bits 0-3 are the index of
 that colour.
 
-[[TODO: Set `transition_state_request` to `$80|colour` to have the transition
-fill the screen with colour index `colour`. The transition will read
-this value in due course, and the result will come to pass
+[[TODO: Set `transition_state_request` to `$80|colour` to have the
+transition fill the screen with colour index `colour`. The transition
+will read this value in due course, and the result will come to pass
 eventually - poll `transition_current_state` as above to monitor
-progress.]]
-
-Once the transition reaches the requested state, it'll stop.
+progress. Once the transition reaches the requested state, it'll
+stop.]]
 
 # Transitions that just change the palette
 
@@ -56,7 +55,8 @@ display contents are irrelevant.
 
 No specific screen setup requirements.
 
-The part should fill the screen to a solid colour.
+But for sanity's sake we should probably require something like the
+part exit state for effects that write to display RAM.
 
 ## Part entry state
 
