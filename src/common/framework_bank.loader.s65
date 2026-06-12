@@ -501,6 +501,7 @@ _offset=main_ram_stuff_size-256
 ;-------------------------------------------------------------------------
 
 set_default_irq_handler:
+                php
                 sei
                 lda #<page02_standard_irq_handler ; TODO: fix naming
                 sta irq1v+0
@@ -520,6 +521,7 @@ set_default_irq_handler:
                 lda #$80|VIAIRQ.ca1|VIAIRQ.t2
                 sta system_via.ier
 
+                plp
                 rts
 
 ;-------------------------------------------------------------------------
@@ -587,11 +589,8 @@ relda: lda #$ff
 ;-------------------------------------------------------------------------
 
 page02_set_default_irq_handler:
-                php
                 jsr page02_select_bank
-                jsr set_default_irq_handler
-                plp
-                rts
+                jmp set_default_irq_handler
 
 ;-------------------------------------------------------------------------
 

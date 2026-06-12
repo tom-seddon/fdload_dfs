@@ -27,6 +27,7 @@ Each part should leave the screen in a standard Mode 2 or Mode 8 setup:
 - Start address $3000 (Mode 2)/$5800 (Mode 8)
 - Wrap size 20 KB (Mode 2)/10 KB (Mode 8)
 - Default palette
+- Default IRQ handler installed
 
 The framework looks after starting the transition.
 
