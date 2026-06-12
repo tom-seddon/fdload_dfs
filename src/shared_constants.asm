@@ -37,7 +37,7 @@ effect_zp_end=$a0
 ; reserved for use by transition effect while running. If no
 ; transition effect running, this whole region can be used.
 transition_zp_begin=$a0
-transition_zp_end=$be
+transition_zp_end=$bd
 
 ; indicates current state of transition, visually speaking, in some
 ; transition-dependent fashion.
@@ -63,6 +63,13 @@ framework_zp_end=$100
 ; arguments for loader_decomp_data.
 framework_decomp_src=$e0
 framework_decomp_dest=framework_decomp_src+2
+
+; the default IRQ handler increments this on each T2 timeout.
+framework_t2_counter=$fe
+
+; the default IRQ handler increments this on each vsync.
+framework_vsync_counter=$ff
+
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ; 
@@ -163,10 +170,8 @@ USE_FILE_LOAD_ADDRESS=$0000
 USE_FILE_EXEC_ADDRESS=$0000
 NO_FILE_EXEC_ADDRESS=$FF00
 
-; Start next part.
-;
-; This doesn't return.
-framework_next_part=$202
+; stop current transition.
+framework_stop_transition=$202
 
 ; $204 isn't free for use (it's IRQ1V)
 

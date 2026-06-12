@@ -17,7 +17,10 @@
 
                 ; don't overlap with $fc.
                 .cerror *>$fc
-*=$fd
+
+                ; fd - todo
+                ; fe - todo
+                ; ff - vsync counter
 
 ;-------------------------------------------------------------------------
 
@@ -80,9 +83,12 @@ framework_zp_fdload_sector=fdload_sector
 
 ; The page02_ symbols are in page $02.
 framework_page02_transition_t2_routine_addr=page02_standard_irq_handler.transition_t2_routine_addr
+framework_page02_transition_t2_acccon_value=page02_standard_irq_handler.transition_t2_acccon_value
 framework_page02_start_next_part=page02_start_next_part
 framework_page02_transition_vsync_routine_addr=page02_standard_irq_handler.transition_vsync_routine_addr
 framework_page02_bra_skip_vsync=page02_standard_irq_handler.bra_skip_vsync
+framework_page02_transition_t2_lda_acccon=page02_standard_irq_handler.transition_t2_lda_acccon
+framework_page02_transition_t2_done=page02_standard_irq_handler.transition_t2_done
                 .endblock
 
 ;-------------------------------------------------------------------------
@@ -250,48 +256,48 @@ call_exec_address:
 
                 .section framework_bank_code
 
-set_mode_2: .block
-                ; N.B., this doesn't set the scroll wraparound size
-                ldx #13
-init_crtc_loop:
-                stx $fe00
-                lda crtc_2MHz,x
-                sta $fe01
-                dex
-                bpl init_crtc_loop
+; set_mode_2: .block
+;                 ; N.B., this doesn't set the scroll wraparound size
+;                 ldx #13
+; init_crtc_loop:
+;                 stx $fe00
+;                 lda crtc_2MHz,x
+;                 sta $fe01
+;                 dex
+;                 bpl init_crtc_loop
 
-                lda #$f4
-                sta video_ula_control
+;                 lda #$f4
+;                 sta video_ula_control
 
-                lda #0
-init_palette_loop:
-                eor #7          ; ULA colours are inverted
-                sta video_ula_palette
-                eor #7          ; undo the above
-                clc
-                adc #$11
-                bcc init_palette_loop
+;                 lda #0
+; init_palette_loop:
+;                 eor #7          ; ULA colours are inverted
+;                 sta video_ula_palette
+;                 eor #7          ; undo the above
+;                 clc
+;                 adc #$11
+;                 bcc init_palette_loop
 
-                lda #$06
-                sta video_ula_palette
+;                 lda #$06
+;                 sta video_ula_palette
 
-                rts
-crtc_2MHz:
-                .byte $7F            ; R0 - Horizontal Total
-                .byte 80             ; R1 - Horizontal Displayed
-                .byte $62            ; R2 - Horizontal Sync
-                .byte $28            ; R3 - Sync Width (%vvvvhhhh)
-                .byte $26            ; R4 - Vertical Total
-                .byte $00            ; R5 - Vertical Total Adjust
-                .byte $20            ; R6 - Vertical Displayed
-                .byte $22            ; R7 - Vertical Sync Position
-                .byte $01            ; R8 - Interlace/Delay
-                .byte $07            ; R9 - Scan lines per character
-                .byte $20            ; R10 - Cursor blink/start
-                .byte 8              ; R11 - Cursor End
-                .byte $06            ; R12 - screen start MSB
-                .byte $00            ; R13 - screen start LSB
-                .endblock
+;                 rts
+; crtc_2MHz:
+;                 .byte $7F            ; R0 - Horizontal Total
+;                 .byte 80             ; R1 - Horizontal Displayed
+;                 .byte $62            ; R2 - Horizontal Sync
+;                 .byte $28            ; R3 - Sync Width (%vvvvhhhh)
+;                 .byte $26            ; R4 - Vertical Total
+;                 .byte $00            ; R5 - Vertical Total Adjust
+;                 .byte $20            ; R6 - Vertical Displayed
+;                 .byte $22            ; R7 - Vertical Sync Position
+;                 .byte $01            ; R8 - Interlace/Delay
+;                 .byte $07            ; R9 - Scan lines per character
+;                 .byte $20            ; R10 - Cursor blink/start
+;                 .byte 8              ; R11 - Cursor End
+;                 .byte $06            ; R12 - screen start MSB
+;                 .byte $00            ; R13 - screen start LSB
+;                 .endblock
 
 ;-------------------------------------------------------------------------
 ;
@@ -524,8 +530,8 @@ page02_unrelocated:
                 .cerror *!=framework_load_file
                 bra page02_load_file
 
-                .cerror *!=framework_next_part
-                bra page02_next_part
+                .cerror *!=framework_stop_transition
+                bra stop_transition
 
                 .cerror *!=irq1v
                 .word page02_standard_irq_handler
@@ -558,21 +564,11 @@ page02_decomp_data_2:
 
 ;-------------------------------------------------------------------------
 
-page02_next_part:
-                jsr page02_select_bank
-                lda page02_next_part_rts_addr+1
-                pha
-                lda page02_next_part_rts_addr+0
-                pha
-page02_rts:
-                rts
-
-;-------------------------------------------------------------------------
-
 page02_select_bank:
                 ldy romsel
                 lda #framework_bank
                 sta romsel
+page02_rts:
                 rts
 
 ;-------------------------------------------------------------------------
@@ -596,7 +592,18 @@ page02_set_default_irq_handler:
                 jsr set_default_irq_handler
                 plp
                 rts
-                
+
+;-------------------------------------------------------------------------
+
+stop_transition:
+                jsr page02_select_bank
+                phy
+                ldx #0          ; null transition
+                jsr framework_bank_init_transition
+                ply
+                sty romsel
+                rts
+
 ;-------------------------------------------------------------------------
 
                 .fill $258-*,0
@@ -617,14 +624,14 @@ page02_copy_in:
 ;-------------------------------------------------------------------------
 
 page02_start_next_part:
-                pla
-                sta page02_next_part_rts_addr+0
-                pla
-                sta page02_next_part_rts_addr+1
                 lda #part_main_bank
                 sta romsel
+                lda #>(page02_select_bank-1)
+                pha
+                lda #<(page02_select_bank-1)
+                pha
                 jmp $8000
-                
+
 ;-------------------------------------------------------------------------
 
 page02_standard_irq_handler: .block
@@ -645,6 +652,8 @@ t2_val=260*64
                 lda #>t2_val
                 sta system_via.t2c_h
 
+                inc framework_vsync_counter
+
 bra_skip_vsync:
                 ; can be replaced with $02 (NOP #xx) to have the next
                 ; bit of code executed. Reinstate $80 (BRA rel) to
@@ -657,6 +666,9 @@ bra_skip_vsync:
                 lda romsel
                 pha
 
+                lda #framework_bank
+                sta romsel
+
 transition_vsync_routine_addr=*+1
                 jsr $0000       ; no useful address needed
 
@@ -666,6 +678,7 @@ transition_vsync_routine_addr=*+1
                 plx
 
 vsync_done:
+page02_null_irq_handler:
                 lda $fc
                 rti
 
@@ -710,17 +723,24 @@ test_t2:
                 sta $fc5d
                 .endif
 
-                ; unlike the vsync handler, there's no skip case here.
-                ; The handler has to do a bunch of work for the music.
-                ; In for a penny...
+                ; this lda # is replaced with `bra transition_t2_done'
+                ; if the update routine is null.
+transition_t2_lda_acccon:
+                lda #acccon.y
+                sta acccon
+
                 lda #framework_bank
                 sta romsel
 transition_t2_routine_addr=*+1
-                jsr page02_rts ; suitable null address initially
+                jsr page02_rts
 
+transition_t2_done:
+                inc framework_t2_counter
+                
                 .if b2_debug!=0
                 stz $fc5d       ; reset border colour
                 .endif
+
 
                 pla
                 sta acccon
@@ -731,14 +751,6 @@ transition_t2_routine_addr=*+1
                 pla
                 rti
                 .endblock
-                
-page02_null_irq_handler:
-                lda $fc
-                rti
-
-;-------------------------------------------------------------------------
-
-page02_next_part_rts_addr: .word framework_bank_boot-1
 
 ;-------------------------------------------------------------------------
 

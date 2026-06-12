@@ -174,7 +174,7 @@ copy_page02_loop:
 
 load_fw_args:
                 .word $8000     ; load address
-                .word framework_next_part ; exec address
+                .word $8000     ; exec address
                 .byte framework_bank ; rom bank
                 .byte 0         ; drive
                 .text 'fw',0    ; name
