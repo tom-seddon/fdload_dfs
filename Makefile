@@ -34,6 +34,11 @@ __VERBOSE:=$(if $(VERBOSE),--verbose,)
 ##########################################################################
 ##########################################################################
 
+# busybox-type Python script that provides a consistent syntax for
+# this or that across Windows, macOS and Linux.
+#
+# Follow the existing examples. Or run it manually - it responds to
+# --help.
 SHELLCMD_PY:=dependencies/shellcmd.py/shellcmd.py
 
 ROOT:=$(shell $(PYTHON) "$(SHELLCMD_PY)" realpath .)
@@ -46,15 +51,16 @@ export SHELLCMD
 ##########################################################################
 ##########################################################################
 
-# Folder paths.
 BIN:=$(ROOT)/bin
 BEEB_BIN:=$(ROOT)/dependencies/beeb/bin
-BUILD:=$(ROOT)/build
 BEEBLINK:=$(ROOT)/tests/beeblink/fdload_dfs
 export BIN
 export BEEB_BIN
-export BUILD
 export BEEBLINK
+
+# Absolute path for build byproducts of all kinds.
+BUILD:=$(ROOT)/build
+export BUILD
 
 # Names of executable files for tools. No extension and no args.
 ZX02_EXE:=$(BIN)/zx02

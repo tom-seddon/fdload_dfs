@@ -30,7 +30,7 @@ fix it. Change to the working copy and do this:
 
 	git submodule update --init --recursive
 
-## Build the code
+## Process
 
 Change to the working copy and run `make`.
 
