@@ -645,10 +645,11 @@ ldx palette_pulse_index
 lda palette_pulse_pattern,x	; assume index was valid
 cpx #palette_pulse_pattern_end-palette_pulse_pattern
 bcc set				; taken if index not actually valid
-ror transition_current_state	; indicate steady state
 lda #0				; colour 0
 .set
-eor #7
+ora #$80			; display is always a solid colour
+sta transition_current_state
+eor #$87			; also unset bit 7
 clc
 .loop
 sta $fe21

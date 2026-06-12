@@ -9,26 +9,6 @@ screens=[screen0,screen1,screen2,screen3,screen4]
                 
 *=$8000
 
-                ldx #15
--
-                lda mode_1_palette,x
-                sta video_ula_palette
-                dex
-                bpl -
-
-                .if MODE==1
-                lda #$d8        ; mode 1
-                .elif MODE==5
-                lda #$c4        ; mode 5
-                .else
-                .error 
-                .endif
-                sta video_ula_control
-
-                lda #8
-                sta $fe00
-                stz $fe01
-
                 ; page in whichever RAM isn't displayed
                 lda acccon
                 lsr a          ; C=1 if displaying shadow; C=0 if main
@@ -62,6 +42,22 @@ transition_finished_loop:
                 bne transition_finished_loop
 
                 jsr framework_stop_transition
+
+                .if MODE==1
+                lda #$d8        ; mode 1
+                .elif MODE==5
+                lda #$c4        ; mode 5
+                .else
+                .error 
+                .endif
+                sta video_ula_control
+
+                ldx #15
+-
+                lda mode_1_palette,x
+                sta video_ula_palette
+                dex
+                bpl -
 
                 lda #$80
                 sta transition_done
