@@ -79,7 +79,11 @@ cli
 
 ldx #5:jsr $8003
 ldx #LO(load_p0):ldy #HI(load_p0):jsr framework_load_file
+jsr start_next_part
 
+ldx #5:jsr $8003    ; TODO: Wat dis? Transition?
+
+ldx #LO(load_p1):ldy #HI(load_p1):jsr framework_load_file
 jsr start_next_part
 
 jmp demo_loop
@@ -105,6 +109,13 @@ equw NO_FILE_EXEC_ADDRESS	; no exec address
 equb part_main_bank		; ROM bank
 equb 0				; drive
 equs "SCRNS11",0		; name
+
+.load_p1
+equw $8000			; load address
+equw NO_FILE_EXEC_ADDRESS	; no exec address
+equb part_main_bank	; ROM bank
+equb 0				; drive
+equs "XROT",0		; name
 
 .start_next_part
 {
@@ -285,7 +296,7 @@ equb $f0 OR ($7 EOR 7)
 equb 63			    ; R0 - H total
 equb 40			    ; R1 - H displayed
 equb 49			    ; R2 - H sync position
-equb $42		    ; R3 - Sync timings
+equb $24		    ; R3 - Sync timings
 equb 38			    ; R4 - V total
 equb 0			    ; R5 - V total adjust
 equb 32			    ; R6 - V displayed
@@ -301,7 +312,7 @@ equb HI($5800/8)	    ; R12 - Start MSB
 equb 127		    ; R0 - H total
 equb 80			    ; R1 - H displayed
 equb 98			    ; R2 - H sync position
-equb $82		    ; R3 - Sync timings
+equb $28		    ; R3 - Sync timings
 equb 38			    ; R4 - V total
 equb 0			    ; R5 - V total adjust
 equb 32			    ; R6 - V displayed
