@@ -2,14 +2,7 @@
 \ *	RASTER FX FRAMEWORK
 \ ******************************************************************
 
-\ NEED TO RE-REMEMBER HOW RVI WORKS FROM FIRST PRINCIPLES!
-\ AND DOCUMENT THIS IN THE SIMPLEST POSSIBLE EXAMPLE.
-
-\ TABLE THAT SPECIFIES LINE [0,255] & BANK [SHADOW/MAIN] PER SCANLINE.
-\ RVI LOOP THAT DISPLAYS THIS.
-
-CPU 1
-
+CPU 1	; MASTER
 INCLUDE "../shared_constants.asm"
 
 \ ******************************************************************
@@ -110,11 +103,9 @@ GUARD &7F
 
 \\ FX variables
 
-.raster_y				skip 1
 .image_y				skip 1
 .table_idx				skip 1
 .count					skip 1
-.write_rts				skip 2
 
 .startx					skip 1
 .starty					skip 1
@@ -380,15 +371,6 @@ GUARD &C000				; ensure code size doesn't hit start of screen memory
 \ ******************************************************************
 
 IF 0
-.cycles_wait_128		; JSR to get here takes 6c
-{
-	FOR n,1,58,1		; 58x
-	NOP					; 2c
-	NEXT				; = 116c
-	RTS					; 6c
-}						; = 128c
-ENDIF
-
 .cycles_wait_scanlines	; 6c
 {
 	FOR n,1,54,1		; 54x
@@ -410,6 +392,7 @@ ENDIF
 	.done
 	RTS					; 6c
 }
+ENDIF
 
 .main_end
 
@@ -527,7 +510,6 @@ ENDIF
 	lda #13:sta &fe00	; 8c
 	lda screen_LO, x:sta &fe01	; 10c
 
-	jsr wipe_image_table
 IF 1
 	lda (readptr)
 	cmp #128
@@ -582,7 +564,7 @@ ENDIF
 \
 \ The draw function is the main body of the FX.
 \
-\ This function will be exactly at the start* of raster line 0 with
+\ This function will be exactly at the start* of raster line -1 with
 \ a stablised raster. VC=0 HC=0|1 SC=0
 \
 \ This means that a new CRTC cycle has just started! If you didn't
@@ -599,7 +581,7 @@ IF 1
 	\\ Enter fn at 64us before first raster line
 	\\ <=== start of scanline -1 HCC=0 LVC=0 VCC=0
 
-	WAIT_CYCLES 128-14-6 -16
+	WAIT_CYCLES 128-36	; 92c
 
 	\\ <== 92c
 
@@ -655,19 +637,18 @@ IF 1
 	LDA screen_LO, Y:STA &fe01		; 10c		X=1
 	\\ <== 74c
 
-	\\ Load Y ahead of raster
-	ldy #1							; 2c
-	ldx #0							; 2c
+	\\ X=raster Y
+	ldx #1							; 2c
 
-	WAIT_CYCLES 4
+	WAIT_CYCLES 6
 
 	\\ <== 82c
 
 	\\ start segment 1..
 	stz &fe00						; 6c
 	lda #1							; 2c
-	\\ This has to be bang on 96c on real hw
 	sta &fe01						; R0=1 horizontal total = 2
+	\\ This has to be bang on 96c on real hw
 	\\ <== 96c
 
 	lda #6:sta &fe00
@@ -687,18 +668,16 @@ IF 1
 	\\ <== 120c
 
 	lda #95							; 2c
-
-	\\ got to catch this before 2c!
 	sta &FE01						; 8c R0=95 horizontal total = 96
+	\\ This must be on start of scanline.
 	\\ <== 128c/0c
 
-	\\ Only 18 cycles available!
-
-	sty raster_y					; 3c
-	lda table_image_y, Y			; 4c
+	lda table_image_y, X			; 4c
 	tay								; 2c
+	lda #0							; 2c
+	sta table_image_y, X			; 4c	wipe table here to save vblank cycles
 
-	WAIT_CYCLES 9
+	WAIT_CYCLES 6
 
 	\\ Screen start address = screen[image_y]
 	lda #13:sta &fe00				; 8c
@@ -728,28 +707,21 @@ IF 1
 	\\ <== 82c
 
 	\\ Set horizontal total
-	\\ This has to be bang on 96c!
 	stz &fe00						; 6c
 	lda #1							; 2c
 	sta &fe01						; 6c R0=1 horizontal total = 2
-
+	\\ This has to be bang on 96c!
 	\\ <== 96c
 
-	nop								; 2c		MUST BE 2c!
+	WAIT_CYCLES 9
 
-	\\ Remaining segments until we have 128 chars in total
-	\\ 22 cycles in total inc loop
-
-	WAIT_CYCLES 4
-
-	ldy raster_y					; 3c
-	tya								; 2c
+	\\ Toggle MAIN/SHADOW for dither effect.
+	txa								; 2c
 	and #1							; 2c
 	sta &fe34						; 4c
 
-	iny								; 2c
-
-	cpy #255						; 2c
+	inx								; 2c
+	cpx #255					   ; 2c
 	bne fx_draw_loop				; 3c
 	\\ <== 120c
 
@@ -762,7 +734,6 @@ IF 1
 	\\ So if finish on scanline count N
 	\\ Set R9 to get us back to 0 on next scanline
 
-	\\ got to catch this before 2c!
 	lda #95							; 2c
 	sta &FE01						; 6c R0=95 horizontal total = 96
 	\\ <== 128c/0c
@@ -859,80 +830,6 @@ ENDIF
 
 	RTS
 }
-
-.wipe_image_table
-IF 1
-{
-	lda #0
-;	ldx #0
-	FOR n,0,255,1
-	sta table_image_y+n
-;	stx table_image_bank+n
-	NEXT
-	rts
-}	\\ 256 * 4 * 2 = 2048c = 16 scanlines
-ELSE
-{
-	ldx #255
-	FOR n,0,255,1
-	stx table_image_y+n
-	dex
-	NEXT
-	rts
-}	\\ 256 * 4 * 2 = 2048c = 16 scanlines
-ENDIF
-
-IF 0
-.naive_code_unrolled
-{
-	FOR n,0,255,1
-	stx table_image_bank+n
-	sty table_image_y+n
-	iny
-	NEXT
-	rts
-}
-
-.naive_table_draw_S_at_Y
-{
-	\\ Calc entry point
-	lda unrolled_code_LO, Y
-	sta jmp_to_code+1
-	lda unrolled_code_HI, Y
-	sta jmp_to_code+2
-
-	\\ Calc exit
-	tya
-	clc
-	adc scale_height, X
-	bcc end_ok
-	lda #255
-	.end_ok
-	tay
-
-	lda unrolled_code_LO, Y
-	sta write_rts
-	lda unrolled_code_HI, Y
-	sta write_rts+1
-
-	lda #&60		; RTS
-	sta (write_rts)
-
-	lda scale_y_offset, X
-	tay
-	lda scale_y_bank, X
-	tax
-
-	.jmp_to_code
-	jsr &ffff
-
-	\\ Need to put code back afterwards
-
-	lda #&8e		; STX
-	sta (write_rts)
-	rts
-}
-ENDIF
 
 .drawline
 {
@@ -1086,7 +983,6 @@ ENDIF
 	BRA shallowlineloop		; always taken
 }
 
-
 .fx_end
 
 \ ******************************************************************
@@ -1104,7 +1000,7 @@ ENDIF
 	EQUB 38					; R4  vertical total
 	EQUB 0					; R5  vertical total adjust
 	EQUB 32					; R6  vertical displayed
-	EQUB 35					; R7  vertical position; 35=top of screen
+	EQUB 34					; R7  vertical position; 35=top of screen
 	EQUB &0					; R8  interlace; &30 = HIDE SCREEN
 	EQUB 7					; R9  scanlines per row
 	EQUB 32					; R10 cursor start
@@ -1112,28 +1008,6 @@ ENDIF
 	EQUB HI(screen_addr/8)	; R12 screen start address, high
 	EQUB LO(screen_addr/8)	; R13 screen start address, low
 }
-
-.osfile_filename
-EQUS "Width1", 13
-
-.shadow_filename
-EQUS "Width2", 13
-
-.osfile_params
-.osfile_nameaddr
-EQUW osfile_filename
-; file load address
-.osfile_loadaddr
-EQUD screen_addr
-; file exec address
-.osfile_execaddr
-EQUD 0
-; start address or length
-.osfile_length
-EQUD 0
-; end address of attributes
-.osfile_endaddr
-EQUD 0
 
 \ ******************************************************************
 \ *	FX DATA
@@ -1162,18 +1036,6 @@ y = n
 line = y MOD 8
 EQUB line
 NEXT
-
-IF 0
-.unrolled_code_LO
-FOR n,0,255,1
-EQUB LO(naive_code_unrolled + n*7)
-NEXT
-
-.unrolled_code_HI
-FOR n,0,255,1
-EQUB HI(naive_code_unrolled + n*7)
-NEXT
-ENDIF
 
 MIN_W=52
 MAX_W=304
@@ -1321,9 +1183,6 @@ ALIGN &100
 .table_image_y
 skip &100
 
-.table_image_bank
-skip &100
-
 .bss_end
 
 
@@ -1332,7 +1191,7 @@ skip &100
 \ ******************************************************************
 
 PRINT "------"
-PRINT "RASTER FX"
+PRINT "X-ROTATOR"
 PRINT "------"
 PRINT "MAIN size =", ~main_end-main_start
 PRINT "FX size = ", ~fx_end-fx_start
