@@ -5,6 +5,8 @@
 CPU 1	; MASTER
 INCLUDE "../shared_constants.asm"
 
+PART_TIMEOUT_VSYNCS=500
+
 \ ******************************************************************
 \ *	OS defines
 \ ******************************************************************
@@ -267,17 +269,16 @@ GUARD &C000				; ensure code size doesn't hit start of screen memory
 
 	\\ Service any system modules here!
 
-	\\ Check for Escape key
-
-;	LDA #&79
-;	LDX #(&70 EOR &80)
-;	JSR osbyte
-;	STX escape_pressed
-
-	\\ FX update callback here!
-
-	.call_update
-	JSR fx_update_function
+	\\ Check for timeout of part.
+	lda vsync_counter+1
+	cmp #HI(PART_TIMEOUT_VSYNCS)
+	bcc continue
+	lda vsync_counter+0
+	cmp #LO(PART_TIMEOUT_VSYNCS)
+	bcc continue
+	ldx #&ff
+	stx escape_pressed
+	.continue
 
 	\\ Wait for first scanline
 
@@ -287,34 +288,7 @@ GUARD &C000				; ensure code size doesn't hit start of screen memory
 		BIT &FE4D				; 4c + 1/2c
 		BEQ waitTimer1         	; poll timer1 flag
 
-
-		\\ Reading the T1 low order counter also resets the T1 interrupt flag in IFR
-		IF 0
-		LDA &FE44					; 4c + 1c - will be even already?
-
-		\\ New stable raster NOP slide thanks to VectorEyes 8)
-
-		\\ Observed values $FA (early) - $F7 (late) so map these from 7 - 0
-		\\ then branch into NOPs to even this out.
-
-		AND #15
-		SEC
-		SBC #7
-		EOR #7
-		STA branch+1
-		.branch
-		BNE branch
-		NOP
-		NOP
-		NOP
-		NOP
-		NOP
-		NOP
-		NOP
-		.stable
-		BIT 0
-		ELSE
-	\\ Stabilise the raster.
+		\\ Stabilise the raster.
 		{
 			\\ Reading the T1 low order counter also resets the T1 interrupt flag in IFR.
 			lda &fe44
@@ -330,10 +304,9 @@ GUARD &C000				; ensure code size doesn't hit start of screen memory
 			; Note: this slide delays (CPU cycles) by TWICE the 'input' to the slide, which is
 			; what we want because the T1 counter is 1MHz, but the CPU runs at 2MHz.
 			nop:nop:nop:nop
-			nop:nop:cmp &93
+			nop:nop:cmp &33
 			.stable
 		}
-		ENDIF
 	}
 
 	\\ Check if Escape pressed
@@ -345,6 +318,11 @@ GUARD &C000				; ensure code size doesn't hit start of screen memory
 
 	.call_draw
 	JSR fx_draw_function
+
+	\\ FX update callback here!
+
+	.call_update
+	JSR fx_update_function
 
 	\\ Keep music player polled.
 	;jsr framework_update_music
@@ -1159,6 +1137,10 @@ INCBIN "../../build/x-rotator.width1.bin.zx02"
 .widths2_zx02
 INCBIN "../../build/x-rotator.width2.bin.zx02"
 
+ALIGN &100
+.table_image_y
+skip &100
+
 .data_end
 
 \ ******************************************************************
@@ -1178,10 +1160,6 @@ SAVE "", start, end
 \ ******************************************************************
 
 .bss_start
-
-ALIGN &100
-.table_image_y
-skip &100
 
 .bss_end
 
