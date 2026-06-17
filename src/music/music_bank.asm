@@ -6,6 +6,7 @@ INCLUDE "../shared_constants.asm"
 ; VGC player flags.
 ENABLE_HUFFMAN=FALSE
 ENABLE_VGM_FX=TRUE
+ENABLE_LZ_INLINE=TRUE
 
 ORG music_zp_begin
 GUARD music_zp_end
