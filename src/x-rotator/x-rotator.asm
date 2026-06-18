@@ -151,8 +151,10 @@ GUARD &C000				; ensure code size doesn't hit start of screen memory
 	LDA #&7F					; A=01111111
 	STA &FE4E					; R14=Interrupt Enable (disable all interrupts)
 	STA &FE43					; R3=Data Direction Register "A" (set keyboard data direction)
-	LDA #&C2					; A=11000010
+	LDA #&E2					; A=11000010 T1 + T2 + vsync
 	STA &FE4E					; R14=Interrupt Enable (enable main_vsync and timer interrupt)
+
+	lda #%00100000:trb &FE4B	; T2=timed interrupt
 
 	\\ Initalise system vars
 
@@ -204,9 +206,9 @@ GUARD &C000				; ensure code size doesn't hit start of screen memory
 
 	SEI
 
-	\\ Exact cycle VSYNC by Hexwab
+	\\ Exact cycle VSYNC by Hexwab + Tom Seddon
 
-	{
+	\\{
 		lda #2
 		.vsync1
 		bit &FE4D
@@ -214,32 +216,51 @@ GUARD &C000				; ensure code size doesn't hit start of screen memory
 
 		\now we're within 10 cycles of vsync having hit
 
-		\delay just less than one frame
+		\delay just less than one frame - now using T2!
 		.syncloop
-		sta &FE4D \ 4(stretched), ack vsync
+		sta &FE4D \ 4(stretched), ack vsync							; 5/6c
 
-		\{ this takes (5*ycount+2+4)*xcount cycles
-		\x=55,y=142 -> 39902 cycles. one frame=39936
-		ldx #142 \2
-		.deloop
-		ldy #55 \2
-		.innerloop
-		dey \2
-		bne innerloop \3
-		\ =152
-		dex \ 2
-		bne deloop \3
-		\}
+		t2val=((39936-46) DIV 2) -2 ; subtract 48c between T2 read and T2 set.
+									; -1us for T2 counter to load.
+									; -1us so we're actually less than a frame!
 
-		nop:nop:nop:nop:nop:nop:nop:nop:nop \ +16
-		bit &FE4D \4(stretched)
-		bne syncloop \ +3
-		\ 4+39902+16+4+3+3 = 39932
+		lda #LO(t2val):sta &FE48	; set T2L						; 8c
+		lda #HI(t2val):sta &FE49	; set T2H and start counting	; 8c
+
+		; Do work!
+		jsr framework_update_music		; takes a variable amount of time...
+
+		; wait for T2<256
+		.wait_t2h_loop:lda &FE49:bne wait_t2h_loop
+
+		; wait for T2 nearly done
+		.wait_t2l_loop:lda &FE48
+		cmp #9:bcs wait_t2l_loop									; 4c
+		asl a														; 2c
+		tax															; 2c
+		jmp (dejitter_routines,x)									; 6c
+
+		\ remaining T2 counter cycles eaten by the nops.
+		.dejitter_9:nop
+		.dejitter_8:nop
+		.dejitter_7:nop
+		.dejitter_6:nop
+		.dejitter_5:nop
+		.dejitter_4:nop
+		.dejitter_3:nop
+		.dejitter_2:nop
+		.dejitter_1:nop
+		.dejitter_0:EQUB $33										; 1c
+
+		lda #2														; 2c
+		bit &FE4D \4(stretched)										; 5/6c
+		bne syncloop \ +3											; 3c
+		\ 46 total cycles between T2 counter read and T2 counter set
+
 		\ ne means vsync has hit
 		\ loop until it hasn't hit
-
-		\now we're synced to vsync
-	}
+		\ now we're synced to vsync
+	\\}
 
 	\\ Set up Timers
 
@@ -342,6 +363,19 @@ GUARD &C000				; ensure code size doesn't hit start of screen memory
 
 	\\ Exit gracefully (in theory)
 	jmp framework_set_default_irq_handler
+
+
+.dejitter_routines:
+EQUW dejitter_0
+EQUW dejitter_1
+EQUW dejitter_2
+EQUW dejitter_3
+EQUW dejitter_4
+EQUW dejitter_5
+EQUW dejitter_6
+EQUW dejitter_7
+EQUW dejitter_8
+EQUW dejitter_9
 }
 
 \ ******************************************************************
