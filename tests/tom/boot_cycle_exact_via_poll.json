@@ -1,0 +1,19 @@
+{
+    "requests":[
+	{
+	    "type":"load_disk_image",
+	    "args":{
+		"path":"cycle_exact_via_poll.ssd",
+		"drive":0
+	    }
+	},
+        {
+            "type":"config",
+            "args":{
+                "base_default_config":"Master 128 (MOS 3.50)",
+		"boot":true,
+		"debug_ports":true
+            }
+        }
+    ]
+}

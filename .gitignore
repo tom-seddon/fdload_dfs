@@ -15,6 +15,14 @@
 /bin/zx02.ilk
 
 # beeblink stuff
+/tests/beeblink/fdload_dfs/R/
+/tests/beeblink/fdload_dfs/S/
+/tests/beeblink/fdload_dfs/T/
+/tests/beeblink/fdload_dfs/U/
+/tests/beeblink/fdload_dfs/V/
+/tests/beeblink/fdload_dfs/W/
+/tests/beeblink/fdload_dfs/X/
+/tests/beeblink/fdload_dfs/Y/
 /tests/beeblink/fdload_dfs/Z/
 
 # Emacs stuff
