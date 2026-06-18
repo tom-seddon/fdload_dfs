@@ -67,12 +67,13 @@ jmp test_via_poll
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-t2val=(39936 DIV 2)-79
+t2val=(39936 DIV 2)-18
 
 .test_via_poll
 {
 lda #%00100000:trb VIA+11	; T2=timed interrupt
 
+.loop
 lda #LO(t2val):sta VIA+8	; set T2L
 lda #HI(t2val):sta VIA+9	; set T2H and start counting
 
@@ -84,38 +85,37 @@ lda #(0<<4) OR (0 EOR 7):sta palette
 .wait_t2h_loop:lda VIA+9:bne wait_t2h_loop
 
 ; wait for T2 nearly done
-.wait_t2l_loop:lda VIA+8:cmp #19:bcs wait_t2l_loop
+.wait_t2l_loop:lda VIA+8:cmp #9:bcs wait_t2l_loop
 
 asl a
 tax
 jmp (dejitter_routines,x)
 
-.dejitter_18:nop
-.dejitter_17:nop
-.dejitter_16:nop
-.dejitter_15:nop
-.dejitter_14:nop
-.dejitter_13:nop
-.dejitter_12:nop
-.dejitter_11:nop
-.dejitter_10:nop
-.dejitter_none
+.dejitter_9:nop
+.dejitter_8:nop
+.dejitter_7:nop
+.dejitter_6:nop
+.dejitter_5:nop
+.dejitter_4:nop
+.dejitter_3:nop
+.dejitter_2:nop
+.dejitter_1:nop
+.dejitter_0
 
-jsr delay_128
-
-CMOS_NOP_1B_1C:jmp test_via_poll
+CMOS_NOP_1B_1C			; JMP is an annoying 3 cycles...
+jmp loop
 
 .dejitter_routines:
-FOR i,1,10:EQUW dejitter_none:NEXT
-EQUW dejitter_10
-EQUW dejitter_11
-EQUW dejitter_12
-EQUW dejitter_13
-EQUW dejitter_14
-EQUW dejitter_15
-EQUW dejitter_16
-EQUW dejitter_17
-EQUW dejitter_18
+EQUW dejitter_0
+EQUW dejitter_1
+EQUW dejitter_2
+EQUW dejitter_3
+EQUW dejitter_4
+EQUW dejitter_5
+EQUW dejitter_6
+EQUW dejitter_7
+EQUW dejitter_8
+EQUW dejitter_9
 }
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
