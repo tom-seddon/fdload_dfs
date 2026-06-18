@@ -175,4 +175,12 @@ test_zx02tool: _build_dependencies
 
 .PHONY:_tom
 _tom:
+# deliberately doesn't change working folder.
 	$(MAKE) -f "tests/tom/Makefile"
+
+##########################################################################
+##########################################################################
+
+.PHONY:test_cycle_exact_via_poll
+test_cycle_exact_via_poll: _build_dependencies
+	$(MAKE) -C "tests/cycle_exact_via_poll"
