@@ -151,7 +151,7 @@ GUARD &C000				; ensure code size doesn't hit start of screen memory
 	LDA #&7F					; A=01111111
 	STA &FE4E					; R14=Interrupt Enable (disable all interrupts)
 	STA &FE43					; R3=Data Direction Register "A" (set keyboard data direction)
-	LDA #&C2					; A=11000010
+	LDA #&A2					; A=10100010	T2 not T1
 	STA &FE4E					; R14=Interrupt Enable (enable main_vsync and timer interrupt)
 
 	\\ Initalise system vars
@@ -204,60 +204,41 @@ GUARD &C000				; ensure code size doesn't hit start of screen memory
 
 	SEI
 
-	\\ Exact cycle VSYNC by Hexwab
+	\\ Tom's approach to stable raster...
 
+	.wait_for_sync
 	{
 		lda #2
-		.vsync1
+		.loop
 		bit &FE4D
-		beq vsync1 \ wait for vsync
-
-		\now we're within 10 cycles of vsync having hit
-
-		\delay just less than one frame
-		.syncloop
-		sta &FE4D \ 4(stretched), ack vsync
-
-		\{ this takes (5*ycount+2+4)*xcount cycles
-		\x=55,y=142 -> 39902 cycles. one frame=39936
-		ldx #142 \2
-		.deloop
-		ldy #55 \2
-		.innerloop
-		dey \2
-		bne innerloop \3
-		\ =152
-		dex \ 2
-		bne deloop \3
-		\}
-
-		nop:nop:nop:nop:nop:nop:nop:nop:nop \ +16
-		bit &FE4D \4(stretched)
-		bne syncloop \ +3
-		\ 4+39902+16+4+3+3 = 39932
-		\ ne means vsync has hit
-		\ loop until it hasn't hit
-
-		\now we're synced to vsync
+		EQUB $33				; 1c NOP
+		beq loop
+		sta &FE4D
 	}
 
-	\\ Set up Timers
-
-	.set_timers
-	; Write T1 low now (the timer will not be written until you write the high byte)
-    LDA #LO(TimerValue):STA &FE44
-    ; Get high byte ready so we can write it as quickly as possible at the right moment
-    LDX #HI(TimerValue):STX &FE45             		; start T1 counting		; 4c +1/2c 
-
-  	; Latch T1 to interupt exactly every 50Hz frame
-	LDA #LO(FramePeriod):STA &FE46
-	LDA #HI(FramePeriod):STA &FE47
+	\\ Skip vblank
+	jsr delay_4096
+	jsr delay_512
+	WAIT_CYCLES 88
+	\\ 40*64 - 2*64 - XXXus = 4864c
 
 	\ ******************************************************************
 	\ *	MAIN LOOP
 	\ ******************************************************************
 
+t2val=(39936 DIV 2)-18
+
 .main_loop
+
+	\\ Set up Timers
+
+	lda #LO(t2val):sta &FE48	; set T2L
+	lda #HI(t2val):sta &FE49	; set T2H and start counting
+
+	\\ FX draw callback here!
+
+	.call_draw
+	JSR fx_draw_function
 
 	\\  Do useful work during vblank (vsync will occur at some point)
 	{
@@ -266,8 +247,6 @@ GUARD &C000				; ensure code size doesn't hit start of screen memory
 		INC vsync_counter+1
 		.no_carry
 	}
-
-	\\ Service any system modules here!
 
 	\\ Check for timeout of part.
 	lda vsync_counter+1
@@ -280,45 +259,6 @@ GUARD &C000				; ensure code size doesn't hit start of screen memory
 	stx escape_pressed
 	.continue
 
-	\\ Wait for first scanline
-
-	{
-		LDA #&40
-		.waitTimer1
-		BIT &FE4D				; 4c + 1/2c
-		BEQ waitTimer1         	; poll timer1 flag
-
-		\\ Stabilise the raster.
-		{
-			\\ Reading the T1 low order counter also resets the T1 interrupt flag in IFR.
-			lda &fe44
-
-			\\ New stable raster NOP slide thanks to VectorEyes 8)
-			; Extract lowest 3 bits, use result to control a NOP slide. This corrects for timer jitter and provides stable raster.
-			and #7
-			eor #7
-			sta branch+1
-			.branch
-			bpl branch \always
-			.slide
-			; Note: this slide delays (CPU cycles) by TWICE the 'input' to the slide, which is
-			; what we want because the T1 counter is 1MHz, but the CPU runs at 2MHz.
-			nop:nop:nop:nop
-			nop:nop:cmp &33
-			.stable
-		}
-	}
-
-	\\ Check if Escape pressed
-
-	LDA escape_pressed
-	BMI call_kill
-
-	\\ FX draw callback here!
-
-	.call_draw
-	JSR fx_draw_function
-
 	\\ FX update callback here!
 
 	.call_update
@@ -327,9 +267,38 @@ GUARD &C000				; ensure code size doesn't hit start of screen memory
 	\\ Keep music player polled.
 	;jsr framework_update_music
 
-	\\ Loop as fast as possible
+	\\ Wait for timer 2.
 
-	JMP main_loop
+	\\ Check if Escape pressed
+
+	LDA escape_pressed
+	BMI call_kill
+
+	\\ Now sync to end of frame
+
+	; wait for T2<256
+	.wait_t2h_loop:lda &FE49:bne wait_t2h_loop
+
+	; wait for T2 nearly done
+	.wait_t2l_loop:lda &FE48:cmp #9:bcs wait_t2l_loop
+
+	asl a
+	tax
+	jmp (dejitter_routines,x)
+
+	.dejitter_9:nop
+	.dejitter_8:nop
+	.dejitter_7:nop
+	.dejitter_6:nop
+	.dejitter_5:nop
+	.dejitter_4:nop
+	.dejitter_3:nop
+	.dejitter_2:nop
+	.dejitter_1:nop
+	.dejitter_0
+
+	EQUB $33			; JMP is an annoying 3 cycles...
+	jmp main_loop
 
 	\\ Get current module to return CRTC to known state
 
@@ -342,6 +311,18 @@ GUARD &C000				; ensure code size doesn't hit start of screen memory
 
 	\\ Exit gracefully (in theory)
 	jmp framework_set_default_irq_handler
+
+.dejitter_routines:
+EQUW dejitter_0
+EQUW dejitter_1
+EQUW dejitter_2
+EQUW dejitter_3
+EQUW dejitter_4
+EQUW dejitter_5
+EQUW dejitter_6
+EQUW dejitter_7
+EQUW dejitter_8
+EQUW dejitter_9
 }
 
 \ ******************************************************************
@@ -808,6 +789,27 @@ ENDIF
 
 	RTS
 }
+
+\ ******************************************************************
+; all delays are in 2 MHz cycles
+
+.delay_16384:jsr delay_8192
+.delay_8192:jsr delay_4096
+.delay_4096:jsr delay_2048
+.delay_2048:jsr delay_1024
+.delay_1024:jsr delay_512
+.delay_512:jsr delay_256
+.delay_256:jsr delay_128
+.delay_128
+EQUB $5c,$00,$00	; 3-byte, 8-cycle NOP
+.delay_120
+jsr delay_24
+.delay_96:jsr delay_48
+.delay_48:jsr delay_24
+.delay_24:jsr delay_12
+.delay_12:rts
+
+\ ******************************************************************
 
 .drawline
 {

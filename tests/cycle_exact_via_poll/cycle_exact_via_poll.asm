@@ -4,6 +4,7 @@ CPU 1
 ; VGC player flags.
 ENABLE_HUFFMAN=FALSE
 ENABLE_VGM_FX=TRUE
+ENABLE_LZ_INLINE=TRUE
 
 ; other constants
 ACCCON=$fe34
