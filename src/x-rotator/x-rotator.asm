@@ -6,6 +6,8 @@ CPU 1	; MASTER
 INCLUDE "../shared_constants.asm"
 
 PART_TIMEOUT_VSYNCS=500
+SHORTEN_BY_ROWS=3
+ENABLE_MUSIC=TRUE
 
 \ ******************************************************************
 \ *	OS defines
@@ -143,6 +145,7 @@ GUARD &C000				; ensure code size doesn't hit start of screen memory
 	\\ Then wait for transition to end, hide screen, switch to other bank
 	\\ decomp into the other bank, then start the effect.
 
+	\\ Happens with interrupts on, so the system's IRQ1 handles the music playback.
 	JSR fx_init_function
 
 	\\ Set interrupts
@@ -177,11 +180,6 @@ GUARD &C000				; ensure code size doesn't hit start of screen memory
 	lda #2:sta &fe00
 	lda #95:sta &fe01
 
-	\\ Shift vsync - also important!
-
-;	lda #7:sta &fe00
-;	lda #35:sta &fe01
-
 	\\ Ensure the CRTC column counter is incrementing starting from a
 	\\ known state with respect to the cycle stretching. Because the vsync
 	\\ signal is reported via the VIA, which is a 1MHz device, the timing
@@ -204,10 +202,8 @@ GUARD &C000				; ensure code size doesn't hit start of screen memory
 	\ *	DEMO START - from here on out there are no interrupts enabled!!
 	\ ******************************************************************
 
-	SEI
-
 	\\ Exact cycle VSYNC by Hexwab + Tom Seddon
-
+	.find_vsync_edge
 	\\{
 		lda #2
 		.vsync1
@@ -228,7 +224,9 @@ GUARD &C000				; ensure code size doesn't hit start of screen memory
 		lda #HI(t2val):sta &FE49	; set T2H and start counting	; 8c
 
 		; Do work!
+		IF ENABLE_MUSIC
 		jsr framework_update_music		; takes a variable amount of time...
+		ENDIF
 
 		; wait for T2<256
 		.wait_t2h_loop:lda &FE49:bne wait_t2h_loop
@@ -268,7 +266,7 @@ GUARD &C000				; ensure code size doesn't hit start of screen memory
 	; Write T1 low now (the timer will not be written until you write the high byte)
     LDA #LO(TimerValue):STA &FE44
     ; Get high byte ready so we can write it as quickly as possible at the right moment
-    LDX #HI(TimerValue):STX &FE45             		; start T1 counting		; 4c +1/2c 
+    LDA #HI(TimerValue):STA &FE45             		; start T1 counting		; 4c +1/2c 
 
   	; Latch T1 to interupt exactly every 50Hz frame
 	LDA #LO(FramePeriod):STA &FE46
@@ -301,8 +299,7 @@ GUARD &C000				; ensure code size doesn't hit start of screen memory
 	stx escape_pressed
 	.continue
 
-	\\ Wait for first scanline
-
+	\\ Wait for Timer 1.
 	{
 		LDA #&40
 		.waitTimer1
@@ -346,9 +343,9 @@ GUARD &C000				; ensure code size doesn't hit start of screen memory
 	JSR fx_update_function
 
 	\\ Keep music player polled.
-	;jsr framework_update_music
-
-	\\ Loop as fast as possible
+	IF ENABLE_MUSIC
+	jsr framework_update_music
+	ENDIF
 
 	JMP main_loop
 
@@ -357,13 +354,9 @@ GUARD &C000				; ensure code size doesn't hit start of screen memory
 	.call_kill
 	JSR fx_kill_function
 
-	\\ Re-enable useful interupts
-
-    CLI
-
 	\\ Exit gracefully (in theory)
+	CLI
 	jmp framework_set_default_irq_handler
-
 
 .dejitter_routines:
 EQUW dejitter_0
@@ -377,34 +370,6 @@ EQUW dejitter_7
 EQUW dejitter_8
 EQUW dejitter_9
 }
-
-\ ******************************************************************
-\ *	HELPER FUNCTIONS
-\ ******************************************************************
-
-IF 0
-.cycles_wait_scanlines	; 6c
-{
-	FOR n,1,54,1		; 54x
-	NOP					; 2c
-	NEXT				; = 108c
-	BIT 0				; 3c
-
-	.loop
-	DEX					; 2c
-	BEQ done			; 2/3c
-
-	FOR n,1,59,1		; 59x
-	NOP					; 2c
-	NEXT				; = 118c
-
-	BIT 0				; 3c
-	JMP loop			; 3c
-
-	.done
-	RTS					; 6c
-}
-ENDIF
 
 .main_end
 
@@ -522,7 +487,6 @@ ENDIF
 	lda #13:sta &fe00	; 8c
 	lda screen_LO, x:sta &fe01	; 10c
 
-IF 1
 	lda (readptr)
 	cmp #128
 	bne loop
@@ -563,9 +527,6 @@ IF 1
 	.ok
 
 	lda table_image_y+1
-ELSE
-	lda #0
-ENDIF
 	sta image_y
 
 	RTS
@@ -589,7 +550,6 @@ ENDIF
 
 .fx_draw_function
 \{
-IF 1
 	\\ Enter fn at 64us before first raster line
 	\\ <=== start of scanline -1 HCC=0 LVC=0 VCC=0
 
@@ -733,7 +693,7 @@ IF 1
 	sta &fe34						; 4c
 
 	inx								; 2c
-	cpx #255					   ; 2c
+	cpx #255-(SHORTEN_BY_ROWS*8)				   ; 2c
 	bne fx_draw_loop				; 3c
 	\\ <== 120c
 
@@ -787,25 +747,22 @@ IF 1
 	\\ 16c
 
 	lda #4:sta &fe00
-	lda #6:sta &fe01		; R4=7 more character rows total 39
+	lda #6+SHORTEN_BY_ROWS:sta &fe01		; R4=7 more character rows total 39
 	\\ 16c
 
 	lda #7:sta &fe00
-	lda #2:sta &fe01		; R7=vsync at row 34
+	lda #2+SHORTEN_BY_ROWS:sta &fe01		; R7=vsync at row 34
 	\\ 16c
 
 	lda #6:sta &fe00
 	lda #0:sta &fe01		; R6=1 vertical displayed
 	\\ 16c
 
+    RTS
 
 IF HI(fx_draw_loop) <> HI(fx_draw_loop)
 	ERROR "WARNING: fx_draw_loop crossed page boundary!!"
 ENDIF
-
-ENDIF
-
-    RTS
 \}
 
 \ ******************************************************************
@@ -842,6 +799,10 @@ ENDIF
 
 	RTS
 }
+
+\ ******************************************************************
+\ *	Not really drawing lines but drawing widths into the Y buffer.
+\ ******************************************************************
 
 .drawline
 {
