@@ -183,7 +183,7 @@ rts
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-INCLUDE "../../dependencies/vgm-player-bbc/lib/vgcplayer.asm"
+INCLUDE "../../dependencies/vgm-player-bbc/lib/vgcplayer_opt.asm"
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 

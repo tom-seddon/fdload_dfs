@@ -6,7 +6,7 @@ CPU 1	; MASTER
 INCLUDE "../shared_constants.asm"
 
 PART_TIMEOUT_VSYNCS=500
-SHORTEN_BY_ROWS=3
+SHORTEN_BY_ROWS=1
 ENABLE_MUSIC=TRUE
 
 \ ******************************************************************
