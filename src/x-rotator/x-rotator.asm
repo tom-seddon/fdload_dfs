@@ -578,7 +578,7 @@ EQUW dejitter_9
 ;       +----------------------------------------------------------------------------------+
 ;
 
-.fx_draw_function
+.fx_draw_function		\\ [vert] enter PAL line -1
 \{
 	\\ Enter fn at 64us before first raster line
 	\\ <=== start of scanline -1 HCC=0 VCC=0
@@ -666,7 +666,7 @@ EQUW dejitter_9
 	\\ X is the raster line we want to display
 	\\ Use Y to look up a table to increment X
 
-	.fx_draw_loop
+	.fx_draw_loop		\\ [vert] loop x246: PAL lines 1..246
 	\\ <== 120c
 
 	lda #95							; 2c

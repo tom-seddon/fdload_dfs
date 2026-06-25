@@ -5,27 +5,31 @@ description: >-
   Master demo. Use when asked to check, validate, or update the cycle-count
   comments of an RVI draw routine (e.g. fx_draw_function), confirm the critical
   CRTC register writes land on their required cycle, check the 128c-per-scanline
-  invariant, or after editing such a routine. Horizontal/timing correctness only
-  (vertical/structural rules are not yet implemented).
+  invariant, verify vertical/PAL-frame correctness (312 lines, single vsync at
+  the right position, vertical rupture), or after editing such a routine.
 ---
 
 # RVI cycle check
 
 Static analyser + comment rewriter for the cycle-exact CRTC raster code used by
 the RVI effects in this repo. It reproduces the hand cycle-counting, validates
-the critical register writes, and updates the `; Nc` per-line and `\\ <== Nc`
-running-total comments so they don't have to be maintained by hand.
+the critical register writes, updates the `; Nc` per-line and `\\ <== Nc`
+running-total comments, and checks **vertical / PAL-frame correctness** (312
+lines, a single vsync in the right place, the vertical-rupture structure).
 
-**Scope (v1): horizontal / per-scanline timing correctness only.** It does NOT
-yet validate vertical structure (total line count == 312, vsync/R7 placement,
-the special last-scanline-of-last-row CRTC behaviour). Don't claim those are
-checked.
+Two passes:
+- **Horizontal** (`rvi_cycles.py`): per-scanline cycle timing — the 128c
+  invariant, 1MHz stretch, critical R0 landing cycles, page-cross hazards.
+- **Vertical** (`crtc_vertical.py`, runs when the config has a `vertical`
+  block): the PAL frame — line total, vsync placement, rupture sanity, visible
+  lines. See "Vertical check" below for its model and current limits.
 
 ## When to use
 
 - "Check/validate the cycle counts in `fx_draw_function`."
 - "Update the cycle comments after I changed the draw routine."
 - "Did I break a critical CRTC register write / the 128c invariant?"
+- "Is the frame still 312 lines / is vsync in the right place?"
 - Proactively, right after editing an RVI draw routine.
 
 ## How to run
@@ -153,10 +157,60 @@ scanning the source's `ORG <&100` region for ZP labels; add others via
   landing; `[ASK]` for an undocumented register; `[ERROR]` for a bugged page
   guard (`IF HI(x) <> HI(x)`).
 
+## Vertical check (PAL frame)
+
+Runs when the config has a `vertical` block. A non-interlaced PAL frame is **312
+lines** and must contain **exactly one vsync**, stable frame-to-frame (typically
+PAL line 272 = R7 34×8, or 280 = 35×8).
+
+**Model.** Each executed 128c scanline = one PAL line of real time (guaranteed by
+the horizontal pass). The routine is **setup → rupture loop → fixup → free-run
+after RTS**:
+- The **rupture loop** sets `R4` small (vertical total < vsync) so the CRTC frame
+  ends mid-TV-frame, relatching R12/R13 each line (vertical rupture). `R7` is
+  parked out of reach (e.g. 255), so **vsync can't fire in the loop** — which is
+  why the data-dependent per-line `R9` doesn't affect the line/vsync totals.
+- The **tail** (data-independent) restores a normal CRTC frame: `tail_lines =
+  (R4+1)*(R9+1) + R5`, vsync at row `R7` → PAL line `tail_start + R7*(R9+1)`.
+- **Entry is at PAL line −1** (the previous frame's last line). Cycle counts are
+  "lines since entry"; add `entry_pal_line` to get frame-relative numbers. (This
+  −1 offset is why a naïve count comes out at 313/273 instead of 312/272.)
+
+> **If the PAL line counts don't add up (total ≠ 312, vsync off by a constant),
+> the FIRST thing to check is when the draw function is entered.** A wrong
+> `entry_pal_line` shifts every frame-relative number by that constant. Entry is
+> typically −1, 0, or −2 depending on how much CRTC setup time is needed before
+> line 0. If the source doesn't document the entry scanline, **ask the user** —
+> don't guess; set `entry_pal_line` from their answer.
+
+**Checks:** frame total == `frame_lines` (312); exactly one vsync at
+`target_vsync_pal_line`; tail frame closes on the frame boundary (fixed point);
+rupture sanity (R7 parked / loop R4 < R7); visible-line estimate (R6).
+
+**Config `vertical` block:** `entry_pal_line` (−1), `frame_lines` (312),
+`target_vsync_pal_line` (272/280), `entry_R5` (0), `loop_iterations` (null →
+auto-detect from the induction variable), `expected_visible_lines` (optional).
+
+**CRTC facts applied** (`llm-beeb-wiki/.../crtc-6845-advanced.md`): the Last-Line
+condition `C9==R9 AND C4==R4` is evaluated only while `C0<2`; late R4/R9 writes
+don't change that scanline's verdict; R0=1 micro-scanlines are too short to
+commit the verdict (extra dummy scanline). Vsync fires when `C4==R7`; if R7 is
+unreachable there is no vsync that frame.
+
+**Vertical limitations (current):** the rupture-loop *interior* is not simulated
+char-by-char (per-line R9 is data-dependent) — it's modelled as N full PAL lines
+with vsync blocked, which is sufficient for the line-total / vsync / fixed-point
+checks but **not** for verifying per-line R12/R13 *address* selection or exact
+intra-line CRTC scanline emission. The tail uses CRTC row math, not a full
+char-level Last-Line/dummy-scanline simulation. In-source `\\ [vert]` PAL-line
+annotations are added only to comment-free lines; the full breakdown is in the
+report.
+
 ## Known limitations / not yet done
 
-- Vertical/structural correctness (312-line total, R7/vsync, last-row behaviour)
-  — planned next.
+- Per-line R12/R13 address-selection correctness and full char-level CRTC
+  scanline emission (dummy-scanline / C0<2 modelling) — the vertical check covers
+  line-total / vsync / fixed-point, not address or exact emission.
 - Page-cross detection needs `origin`; otherwise reported as disabled.
 - BeebAsm-subset parser (the constructs used by the draw routines), not a full
   assembler. RMW-to-stretched-address and forward conditional branches are

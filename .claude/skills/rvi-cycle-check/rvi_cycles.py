@@ -325,9 +325,11 @@ class Analyser:
         self.page_aligned = set(cfg.get("page_aligned_symbols", []))
 
         self.findings = []          # global findings
-        self.reg_writes = []        # recorded CRTC value writes
+        self.reg_writes = []        # recorded CRTC value writes (reg,val,cum,lineno)
         self.label_cum = {}         # label -> cum at that point
         self.label_pc = {}          # label -> pc offset
+        self.loops = []             # backward-branch loops: label,label_cum,iter_len,lineno
+        self.total_cum = None       # cumulative cycles at end of function (RTS)
         self._scan_top_level()
 
     def add(self, sev, msg):
@@ -500,6 +502,8 @@ class Analyser:
                         else:
                             self.add("OK", f"loop to .{lbl} iteration = {iter_len}c "
                                      f"({iter_len // self.scanline} scanline(s))")
+                        self.loops.append({"label": lbl, "label_cum": self.label_cum[lbl],
+                                           "iter_len": iter_len, "lineno": sl.lineno})
                         pending_adjust = -1   # fall-through is not-taken (deferred)
                     elif lbl is not None:
                         sl.flags.append(("WARN", f"forward branch to .{lbl} counted as "
@@ -516,10 +520,69 @@ class Analyser:
 
             sl.cum_after = cum
 
+        if pending_adjust:
+            cum += pending_adjust
+        self.total_cum = cum
         self.src_lines = src_lines
         self.func_range = (start, end)
         self._post_checks()
         return src_lines
+
+    def detect_trip_count(self, loop):
+        """Best-effort loop trip count from the induction variable:
+        last ldx/ldy #INIT before the loop label, plus cpx/cpy #CMP and inx/dex
+        inside the body. Returns int trips or None."""
+        start, end = self.func_range
+        loop_line = None
+        branch_line = loop["lineno"]
+        # find the loop label line index
+        for i in range(start, end):
+            s = self.lines[i].strip()
+            if re.match(r"^\.%s\b" % re.escape(loop["label"]), s):
+                loop_line = i
+                break
+        if loop_line is None:
+            return None
+        reg = None      # 'x' or 'y'
+        cmp_val = None
+        step = None
+        # body = loop_line .. branch_line (inclusive)
+        for i in range(loop_line, branch_line):
+            for st in split_statements(split_comment(self.lines[i])[0]):
+                st = st.strip()
+                m = re.match(r"(?i)^(cpx|cpy)\b\s*#(.+)$", st)
+                if m:
+                    reg = m.group(1).lower()[-1]
+                    try:
+                        cmp_val = eval_expr(m.group(2), self.symbols)
+                    except CostError:
+                        cmp_val = None
+                if re.match(r"(?i)^inx\b", st):
+                    step = ("x", +1)
+                elif re.match(r"(?i)^iny\b", st):
+                    step = ("y", +1)
+                elif re.match(r"(?i)^dex\b", st):
+                    step = ("x", -1)
+                elif re.match(r"(?i)^dey\b", st):
+                    step = ("y", -1)
+        if reg is None or cmp_val is None or step is None:
+            return None
+        # find INIT: last ldx/ldy #N before the loop label
+        init = None
+        for i in range(start, loop_line):
+            for st in split_statements(split_comment(self.lines[i])[0]):
+                m = re.match(r"(?i)^ld%s\b\s*#(.+)$" % reg, st.strip())
+                if m:
+                    try:
+                        init = eval_expr(m.group(1), self.symbols)
+                    except CostError:
+                        pass
+        if init is None:
+            return None
+        # bne exits on reg == cmp_val
+        if step[1] == +1:
+            return cmp_val - init
+        return init - cmp_val
 
     # mnemonics whose indexed/indirect-Y READ costs +1c on a page cross
     PAGECROSS_READS = {"lda", "ldx", "ldy", "cmp", "cpx", "cpy",
@@ -737,6 +800,24 @@ def rewrite(an, scanline, annotate_missing=False):
 
 # ----------------------------------------------------------------------------
 
+VERT_MARK_RE = re.compile(r"\s*\\\\ \[vert\][^\n]*$")
+
+def apply_vertical_annotations(text, ann):
+    """Add idempotent `\\\\ [vert] ...` markers to the given line numbers.
+    Only annotates lines with no existing `;`/`<==` comment (so we never clobber
+    horizontal cost comments); other target lines are left to the report."""
+    lines = text.splitlines()
+    for lineno, note in ann.items():
+        if lineno < 1 or lineno > len(lines):
+            continue
+        raw = VERT_MARK_RE.sub("", lines[lineno - 1])
+        code, comment, idx = split_comment(raw)
+        if comment.strip() != "":
+            continue            # has a real comment already; leave it
+        lines[lineno - 1] = code.rstrip() + "\t\t\\\\ [vert] " + note
+    return "\n".join(lines) + "\n"
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -762,8 +843,21 @@ def main():
 
     print(build_report(an))
 
+    vann = {}
+    if cfg.get("vertical"):
+        from crtc_vertical import analyse_vertical
+        vF, vann, vS = analyse_vertical(an, cfg["vertical"])
+        print("\n## Vertical (PAL frame) structure")
+        for line in vS:
+            print(f"  {line}")
+        print("\n## Vertical validation")
+        for sev, msg in vF:
+            print(f"  [{sev}] {msg}")
+
     if args.write or args.out:
         newtext = rewrite(an, an.scanline, annotate_missing=args.annotate_missing)
+        if vann:
+            newtext = apply_vertical_annotations(newtext, vann)
         target = Path(args.out) if args.out else src_path
         target.write_text(newtext)
         print(f"\n[written] {target}")
