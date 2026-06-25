@@ -1,0 +1,25 @@
+{
+  "file": "src/x-rotator/x-rotator.asm",
+  "function": "fx_draw_function",
+  "entry_phase": 0,
+  "scanline_cycles": 128,
+  "origin": null,
+  "extra_zp_symbols": [],
+  "page_aligned_symbols": ["screen_HI", "y_to_scanline"],
+  "symbols": {
+    "SHORTEN_BY_ROWS": 1
+  },
+  "register_constraints": {
+    "0": {
+      "exact_completion": [0, 96],
+      "min_value_for_hsync": 95,
+      "note": "Horizontal total. Value write must land exactly on a CRTC char boundary: 96c (start of the 32c right-hand segment) or 0/128c (start of scanline). hsync (R2=95) only fires when R0>=95."
+    },
+    "4":  { "before_row_end": true, "note": "Vertical total (rows-1). R4=0 => 1 row per micro-frame for the RVI trick." },
+    "6":  { "before_row_end": true, "note": "Vertical displayed." },
+    "7":  { "before_row_end": true, "note": "Vertical sync position." },
+    "9":  { "before_row_end": true, "note": "Scanlines per row. R9 = this_line + 15 - next_line. Must be set before the row ends." },
+    "12": { "before_row_end": true, "note": "Screen start address high. Latched at end of row (C4=R4). Must be set before row ends." },
+    "13": { "before_row_end": true, "note": "Screen start address low. Latched at end of row. Must be set before row ends." }
+  }
+}

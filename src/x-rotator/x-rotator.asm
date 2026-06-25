@@ -196,6 +196,8 @@ GUARD &C000				; ensure code size doesn't hit start of screen memory
 ;	ldx #2:jsr cycles_wait_scanlines
 ;	sta $fe00:lda #127:sta $fe01
 
+	\\ TODO: Add this back.
+
 	\\ Initialise system modules here!
 
 	\ ******************************************************************
@@ -548,10 +550,38 @@ EQUW dejitter_9
 \ A FULL AND VALID 312 line PAL signal before exiting!
 \ ******************************************************************
 
+; Hand-authored RVI timing diagram (do not auto-generate / rewrite).
+;
+; Original approach to RVI. Select any address & scanline on any line of the screen.
+; Requires cycle accurate CRTC register writes.
+;
+;       Constants: R1=80 (horizontal displayed) R2=95 (hsync pos) R4=0 (vertical total=1)
+;
+;       +----------------------------------------------------------------------------------+
+;       |CRTC characters                          hsync pos    1         1         1       |
+;       |          1    .....    7         8         9    v    0         1         2       |
+;       |01234567890             0123456789012345678901234567890123456789012345678901234567|
+;       |                                 ^                                                |
+;       |<--- 80 characters displayed ----><-right-><----- horizontal blank ------><-left->|
+;       |                                                                                  |
+;       |<------------- 96 characters total --------------><><><><><><><><><><><><><><><><>|
+;       |^                                                ^  2 chars total x 16 scanlines  |
+;set R0=95                                         set R0=1                        set R0=95        
+;       |                                                                                  |
+;       |Scanline select R9 = current + 15 - next         Screen start address R12+R13     |
+;       |E.g. current = 0 next = 7 R9 = 8                 latched end of cycle (C4=R4=1)   |
+;       |                                                                    v             |
+;       |0000000000000000000000000000000000000000000000000.1.2.3.4.5.6.7.8.X.0.1.2.3.4.5.6.|
+;       |7777777777777777777777777777777777777777777777777                 ^               |
+;       |                                                 ^                |               |
+;       |                           last char not displayed     extra scanline when R0=1   |
+;       +----------------------------------------------------------------------------------+
+;
+
 .fx_draw_function
 \{
 	\\ Enter fn at 64us before first raster line
-	\\ <=== start of scanline -1 HCC=0 LVC=0 VCC=0
+	\\ <=== start of scanline -1 HCC=0 VCC=0
 
 	WAIT_CYCLES 128-36	; 92c
 
@@ -575,7 +605,7 @@ EQUW dejitter_9
 	sta &FE01				; 6c R0=95 horizontal total = 96
 	\\ <== 128c/0c
 
-	\\ <=== start of scanline 0 HCC=0 LVC=0 VCC=0
+	\\ <=== start of scanline 0 HCC=0 VCC=0
 	\\ start segment 0 [0-99]
 
 	lda #4: sta &fe00				; 8c
@@ -640,19 +670,19 @@ EQUW dejitter_9
 	\\ <== 120c
 
 	lda #95							; 2c
-	sta &FE01						; 8c R0=95 horizontal total = 96
+	sta &FE01						; 6c R0=95 horizontal total = 96
 	\\ This must be on start of scanline.
 	\\ <== 128c/0c
 
 	lda table_image_y, X			; 4c
 	tay								; 2c
 	lda #0							; 2c
-	sta table_image_y, X			; 4c	wipe table here to save vblank cycles
+	sta table_image_y, X			; 5c	wipe table here to save vblank cycles
 
 	WAIT_CYCLES 6
 
 	\\ Screen start address = screen[image_y]
-	lda #13:sta &fe00				; 8c
+	lda #13:sta &fe00				; 7c
 	lda screen_LO, y				; 4c	Y=image y
 	sta &fe01						; 6c
 
@@ -707,7 +737,7 @@ EQUW dejitter_9
 	\\ Set R9 to get us back to 0 on next scanline
 
 	lda #95							; 2c
-	sta &FE01						; 6c R0=95 horizontal total = 96
+	sta &FE01						; 5c R0=95 horizontal total = 96
 	\\ <== 128c/0c
 
 	\\ Set R9 so we get back to scanline 0 next line
@@ -760,7 +790,7 @@ EQUW dejitter_9
 
     RTS
 
-IF HI(fx_draw_loop) <> HI(fx_draw_loop)
+IF HI(fx_draw_loop) <> HI(fx_draw_done)
 	ERROR "WARNING: fx_draw_loop crossed page boundary!!"
 ENDIF
 \}
