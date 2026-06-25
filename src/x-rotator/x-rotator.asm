@@ -596,7 +596,7 @@ EQUW dejitter_9
 	clc					; 2c
 	ldy image_y			; 3c next scanline
 	nop					; 2c
-	stz &fe00			; 5c
+	stz &fe00			; 5c (odd stretch +1)
 
 	lda #95				; 2c
 
@@ -682,7 +682,7 @@ EQUW dejitter_9
 	WAIT_CYCLES 6
 
 	\\ Screen start address = screen[image_y]
-	lda #13:sta &fe00				; 7c
+	lda #13:sta &fe00				; 7c (odd stretch +1)
 	lda screen_LO, y				; 4c	Y=image y
 	sta &fe01						; 6c
 
@@ -737,7 +737,7 @@ EQUW dejitter_9
 	\\ Set R9 to get us back to 0 on next scanline
 
 	lda #95							; 2c
-	sta &FE01						; 5c R0=95 horizontal total = 96
+	sta &FE01						; 5c (odd stretch +1) R0=95 horizontal total = 96
 	\\ <== 128c/0c
 
 	\\ Set R9 so we get back to scanline 0 next line

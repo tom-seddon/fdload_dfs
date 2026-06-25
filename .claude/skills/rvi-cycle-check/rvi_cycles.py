@@ -304,6 +304,7 @@ class SrcLine:
         self.flags = []       # (severity, message)
         self.has_instr = False
         self.is_wait = False
+        self.odd_stretch = False   # a stretched access on this line cost only +1
 
 
 # ----------------------------------------------------------------------------
@@ -481,6 +482,8 @@ class Analyser:
                 cum += cost
                 pc += bytelen
                 sl.line_cost += cost
+                if note.startswith("stretched(+1)"):
+                    sl.odd_stretch = True
 
                 # Branch accounting: the per-line cost above is the TAKEN cost
                 # (convention).  For a backward branch that forms a loop, check
@@ -634,6 +637,11 @@ class Analyser:
 PERLINE_RE = re.compile(r";\s*(\d+)\s*c\b", re.IGNORECASE)
 RUNNING_RE = re.compile(r"<==\s*(\d+)\s*c(?:\s*/\s*0c)?", re.IGNORECASE)
 
+# Marker noting a stretched access that cost only +1c (began on an odd cycle, so
+# the usual +2 stretch was reduced to +1). Phase-sensitive - worth calling out.
+ODD_MARK = " (odd stretch +1)"
+ODD_MARK_RE = re.compile(r"\s*\(odd stretch \+1\)")
+
 
 def existing_perline(comment):
     m = PERLINE_RE.search(comment)
@@ -666,8 +674,10 @@ def build_report(an):
         ann = existing_perline(sl.comment)
         run_ann = existing_running(sl.comment)
         mark = ""
+        if sl.odd_stretch:
+            mark += "  [odd stretch +1]"
         if ann is not None and ann != sl.line_cost:
-            mark = f" <-- annotated {ann}c, true {sl.line_cost}c (will fix; barriers unaffected)"
+            mark += f" <-- annotated {ann}c, true {sl.line_cost}c (will fix; barriers unaffected)"
         cumstr = render_running(sl.cum_after, an.scanline)
         anns = str(ann) if ann is not None else "-"
         srctxt = sl.code.strip()
@@ -712,11 +722,16 @@ def rewrite(an, scanline, annotate_missing=False):
             lines[lineno - 1] = raw[:idx] + new_comment
         elif PERLINE_RE.search(comment):
             if sl.line_cost > 0:
-                new_comment = PERLINE_RE.sub(f"; {sl.line_cost}c", comment, count=1)
+                # strip any stale odd-stretch marker first (idempotent), then
+                # re-insert it right after the count if still applicable.
+                stripped = ODD_MARK_RE.sub("", comment)
+                repl = f"; {sl.line_cost}c" + (ODD_MARK if sl.odd_stretch else "")
+                new_comment = PERLINE_RE.sub(repl, stripped, count=1)
                 lines[lineno - 1] = raw[:idx] + new_comment
         elif (annotate_missing and sl.has_instr and not sl.is_wait
               and code.strip() and comment == ""):
-            lines[lineno - 1] = code.rstrip() + "\t\t; " + f"{sl.line_cost}c"
+            mark = ODD_MARK if sl.odd_stretch else ""
+            lines[lineno - 1] = code.rstrip() + "\t\t; " + f"{sl.line_cost}c" + mark
     return "\n".join(lines) + "\n"
 
 

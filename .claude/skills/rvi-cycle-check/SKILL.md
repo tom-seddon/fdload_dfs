@@ -106,6 +106,11 @@ to the config. New effects abusing different registers will extend this list.
   - **NOT stretched:** `&FE20-&FE3F` (Video ULA, ROMSEL, **ACCCON `&FE34`**),
     `&FE80+` (FDC, Econet, Tube), all RAM/ROM. So `sta &fe34` is a flat 4c.
   - Reference: `llm-beeb-wiki/wiki/timing/cycle-stretching.md`.
+- **Odd-stretch marker.** A stretched access beginning on an odd cycle costs
+  only **+1** instead of the usual +2 (the stretch is "reduced", 2->1). These
+  are phase-sensitive, so the rewriter tags them with `(odd stretch +1)` right
+  after the count (e.g. `stz &fe00 ; 5c (odd stretch +1)`). The marker is
+  idempotent: it is removed automatically if a later edit makes the access +2.
 - **Re-sync property (important).** Because a stretched write always finishes on
   an even boundary, a +/-1 error in the *non-stretched* code before it is often
   absorbed — the barrier doesn't move. So:
