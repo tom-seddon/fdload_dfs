@@ -192,6 +192,8 @@ def parse_operand_mode(mnem, operand):
     mhex = re.fullmatch(r"[&$]([0-9A-Fa-f]+)", base_op)
     if mhex:
         addr = int(mhex.group(1), 16)
+    elif re.fullmatch(r"\d+", base_op):     # decimal literal address (e.g. BIT 0)
+        addr = int(base_op)
     return ("__indexed__" if index else "__plain__", addr, base_op, index)
 
 
@@ -438,6 +440,7 @@ class Analyser:
         sl_by_idx = {}
         for_stack = []          # (body_start_idx, remaining_iterations)
         diamond = None          # active balanced if/else, see below
+        pending_loopback = None # (loop_label, loop_line) for a Bcc/JMP loop tail
         idx = start
         while idx < end:
             if idx in sl_by_idx:
@@ -482,7 +485,11 @@ class Analyser:
                     mj = re.match(r"(?i)^(bra|jmp)\s+([A-Za-z_]\w*)\s*$",
                                   split_comment(self.lines[j])[0].strip())
                     if mj:
-                        jmp = (j, mj.group(2))
+                        # only a diamond if the unconditional jump goes FORWARD
+                        # (to a merge); a backward jump is a loop-back, not a merge.
+                        mt = self._find_label_line(mj.group(2), start, end)
+                        if mt is not None and mt >= L:
+                            jmp = (j, mj.group(2))
                         break
                 if L is not None and jmp is not None:
                     cum += 2                      # branch not-taken (path A)
@@ -517,6 +524,51 @@ class Analyser:
                 cum = diamond["entry"] + diamond["costA"]
                 diamond = None
                 # fall through to process the merge label line normally
+
+            # --- loop-exit idiom: `Bcc EXIT` ; backward `JMP/BRA LOOP` ; `.EXIT`
+            # (counter loops like `DEC c / BEQ done / JMP here / .done`). The
+            # conditional is the loop exit (not-taken inside the loop, 2c); the
+            # JMP is the loop-back.
+            if diamond is None and pending_loopback is None:
+                mCond = re.match(r"(?i)^(b[a-z][a-z])\s+([A-Za-z_]\w*)\s*$", stripped)
+                if (mCond and mCond.group(1).lower() != "bra"
+                        and mCond.group(1).lower() in BRANCHES):
+                    jline = None
+                    for j in range(idx + 1, end):
+                        jc = split_comment(self.lines[j])[0].strip()
+                        if jc:
+                            jline = jc
+                            break
+                    mj = re.match(r"(?i)^(bra|jmp)\s+([A-Za-z_]\w*)\s*$", jline or "")
+                    lt = self._find_label_line(mj.group(2), start, end) if mj else None
+                    if mj and lt is not None and lt < idx:      # backward loop-back
+                        cum += 2                                 # cond not-taken (in-loop)
+                        sl.line_cost = 2
+                        sl.cum_after = cum
+                        pending_loopback = (mj.group(2), lt)
+                        idx += 1
+                        continue
+            if pending_loopback is not None:
+                mJ = re.match(r"(?i)^(bra|jmp)\s+([A-Za-z_]\w*)\s*$", stripped)
+                if mJ:
+                    loop_lbl = pending_loopback[0]
+                    pending_loopback = None
+                    cum += 3                                     # JMP/BRA cost
+                    sl.line_cost = 3
+                    sl.cum_after = cum
+                    if loop_lbl in self.label_cum:
+                        iter_len = cum - self.label_cum[loop_lbl]
+                        if iter_len % self.scanline != 0:
+                            self.add("ERROR", f"loop to .{loop_lbl} (line {sl.lineno}) "
+                                     f"iteration = {iter_len}c, not a multiple of {self.scanline}c")
+                        else:
+                            self.add("OK", f"loop to .{loop_lbl} iteration = {iter_len}c "
+                                     f"({iter_len // self.scanline} scanline(s))")
+                        self.loops.append({"label": loop_lbl, "label_cum": self.label_cum[loop_lbl],
+                                           "iter_len": iter_len, "lineno": sl.lineno})
+                    pending_adjust = -2   # exit: skip JMP (-3), cond taken vs not-taken (+1)
+                    idx += 1
+                    continue
 
             # statements separated by ':' (quote-aware)
             raw_stmts = split_statements(code)
@@ -669,7 +721,8 @@ class Analyser:
             return [s.strip() for s in split_statements(split_comment(self.lines[i])[0])]
 
         reg = cmp_val = step = None
-        dec_target = None       # 'x'/'y' or a memory symbol decremented to zero
+        dec_counts = {}         # counter ('x'/'y' or memory) -> decrements per iter
+        has_exit_cond = False   # a beq/bne somewhere in the body (the exit test)
         for i in body:
             for st in stmts(i):
                 m = re.match(r"(?i)^(cpx|cpy)\b\s*#(.+)$", st)
@@ -684,10 +737,13 @@ class Analyser:
                     if re.match(r"(?i)^%s\b" % mn, st):
                         step = s
                         if s[1] == -1:
-                            dec_target = s[0]
+                            dec_counts["x" if mn == "dex" else "y"] = \
+                                dec_counts.get("x" if mn == "dex" else "y", 0) + 1
                 md = re.match(r"(?i)^dec\s+([A-Za-z_]\w*)", st)
                 if md:
-                    dec_target = md.group(1)
+                    dec_counts[md.group(1)] = dec_counts.get(md.group(1), 0) + 1
+                if re.match(r"(?i)^(beq|bne)\b", st):
+                    has_exit_cond = True
 
         # pattern 1: explicit compare
         if reg is not None and cmp_val is not None and step is not None:
@@ -695,16 +751,17 @@ class Analyser:
             if init is not None:
                 return (cmp_val - init) if step[1] == +1 else (init - cmp_val)
 
-        # pattern 2: decrement-to-zero (BNE exits at 0) -> trips = initial value
-        branch = next((st for st in stmts(branch_idx)
-                       if re.match(r"(?i)^b[a-z][a-z]\b", st)), "")
-        if dec_target is not None and re.match(r"(?i)^bne\b", branch):
-            if dec_target in ("x", "y"):
-                init = self._find_imm_init(start, loop_line, "ld%s" % dec_target)
+        # pattern 2: decrement-to-zero. trips = initial counter value / decrements
+        # per iteration (the loop may be unrolled and decrement more than once).
+        if dec_counts and has_exit_cond:
+            counter = max(dec_counts, key=dec_counts.get)
+            ndecs = dec_counts[counter]
+            if counter in ("x", "y"):
+                init = self._find_imm_init(start, loop_line, "ld%s" % counter)
             else:
-                init = self._find_mem_init(start, loop_line, dec_target)
-            if init is not None:
-                return init
+                init = self._find_mem_init(start, loop_line, counter)
+            if init is not None and ndecs > 0:
+                return init // ndecs
         return None
 
     def _find_imm_init(self, lo, hi, mnem):

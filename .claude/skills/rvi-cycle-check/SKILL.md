@@ -172,10 +172,15 @@ scanning the source's `ORG <&100` region for ZP labels; add others via
   cycles** (an `UNBALANCED` mismatch is an ERROR), and uses one cost — it does
   not double-count. Simple forward skips (no `BRA` before the target) are not
   treated as diamonds (still flagged as approximate).
-- **Loop trip counts** — auto-detected for `ldx #N … inx/dex … cpx #M : bne`
-  *and* decrement-to-zero loops (`lda #N : sta MEM … dec MEM : bne`, or
-  `ldx #N … dex : bne`). Override with `vertical.loop_iterations` if needed.
+- **Loop shapes** — backward conditional branch (`… : bne loop`), and the
+  **loop-exit idiom** `Bcc EXIT / JMP|BRA LOOP / .EXIT` (a forward conditional
+  exit + unconditional backward jump, e.g. `DEC c / BEQ done / JMP here / .done`).
+- **Loop trip counts** — `ldx #N … inx/dex … cpx #M : bne`; decrement-to-zero
+  loops (`lda #N : sta MEM … dec MEM …`), including loops **unrolled** so the
+  counter is decremented more than once per iteration (trips = init / decs).
+  Override with `vertical.loop_iterations` if auto-detection fails.
 - **`{` / `}`** anonymous-block delimiters and `\{` / `\}` are zero-cost.
+- **Decimal zero-page operands** (e.g. `BIT 0` = `BIT zp` 3c, not `BIT abs` 4c).
 
 ## Indexed-read page crossings
 
@@ -266,6 +271,9 @@ only to comment-free lines; the full breakdown is in the report.
 - **kefrens** (`just-rasters`, BeebAsm) — pure vertical rupture (R9=0/R4=0, no
   horizontal RVI), entry at PAL line 0, memory-counter loop, balanced left/right
   bar branches. Frame 312, vsync 280. The canonical "311-line rebalance" case.
+- **twister** (`just-rasters`, BeebAsm) — vertical rupture, entry at PAL line 0,
+  shadow/main RAM toggle via `&FE34` (ACCCON, not stretched), **2×-unrolled loop**
+  with a `BEQ done / JMP here` tail (127×2 = 254 lines). Frame 312, vsync 280.
 
 ## Known limitations / not yet done
 
