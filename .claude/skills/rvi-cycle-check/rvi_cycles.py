@@ -253,6 +253,9 @@ def classify(mnem, operand, symbols, zp_symbols):
         name = sym.group(1) if sym else None
         if name in zp_symbols:
             width = "zp"
+        elif name in symbols:
+            # resolved constant (e.g. `foo = locals_start + 1`): zp if < &100
+            width = "zp" if symbols[name] <= 0xFF else "abs"
         else:
             width = "abs"   # default assumption for non-ZP symbols
 
@@ -305,6 +308,7 @@ class SrcLine:
         self.has_instr = False
         self.is_wait = False
         self.odd_stretch = False   # a stretched access on this line cost only +1
+        self.izy_pagecross = False # an (zp),Y read that may cross a page
 
 
 # ----------------------------------------------------------------------------
@@ -321,8 +325,10 @@ class Analyser:
         self.scanline = cfg.get("scanline_cycles", 128)
         self.reg_constraints = {int(k): v for k, v in cfg.get("register_constraints", {}).items()}
         self.func = cfg.get("function", "fx_draw_function")
+        self.end_label = cfg.get("end_label")
         self.origin = cfg.get("origin", None)
         self.page_aligned = set(cfg.get("page_aligned_symbols", []))
+        self.page_align_macros = set(cfg.get("page_align_macros", []))
 
         self.findings = []          # global findings
         self.reg_writes = []        # recorded CRTC value writes (reg,val,cum,lineno)
@@ -351,6 +357,9 @@ class Analyser:
                     prev_align256 = (eval_expr(mAlign.group(1), self.symbols) == 0x100)
                 except CostError:
                     prev_align256 = False
+                continue
+            if s in self.page_align_macros:        # e.g. PAGE_ALIGN == ALIGN &100
+                prev_align256 = True
                 continue
             mAnyLbl = re.match(r"^\.([A-Za-z_][A-Za-z0-9_]*)\b", s)
             if mAnyLbl and prev_align256:
@@ -389,14 +398,28 @@ class Analyser:
                 break
         if start is None:
             raise SystemExit(f"function .{self.func} not found")
-        # end: next .fx_*_function label, or .fx_end / .<func>_done? Use next
-        # top-level .fx_..._function (other than ours) or .fx_end.
+        # end: an explicit end_label if configured, else the next sibling
+        # routine (`.fx_*_function` / `.fx_end`), else the function's own
+        # top-level RTS/JMP (depth 0 w.r.t. `{}`).
         end = len(self.lines)
+        depth = 0
         for i in range(start + 1, len(self.lines)):
             s = self.lines[i].strip()
-            if re.match(r"^\.fx_\w+_function\b", s) or s.startswith(".fx_end"):
+            if self.end_label and re.match(r"^\.%s\b" % re.escape(self.end_label), s):
                 end = i
                 break
+            if not self.end_label:
+                if re.match(r"^\.fx_\w+_function\b", s) or s.startswith(".fx_end"):
+                    end = i
+                    break
+                for st in split_statements(split_comment(self.lines[i])[0]):
+                    st = st.strip()
+                    depth += st.count("{") - st.count("}")
+                    if depth <= 0 and re.match(r"(?i)^(rts|rti)\b", st):
+                        end = i + 1
+                        break
+                if end != len(self.lines):
+                    break
         return start, end
 
     def analyse(self):
@@ -410,18 +433,97 @@ class Analyser:
         selected_reg = None     # last value written to &fe00
         pending_adjust = 0      # deferred fall-through (-1) applied at next real code
 
-        for i in range(start, end):
-            sl = SrcLine(i + 1, self.lines[i])
-            src_lines.append(sl)
+        # Index-based walk so FOR..NEXT bodies can be replayed (the assembler
+        # unrolls them; we re-walk the body `iters` times for correct cycles).
+        sl_by_idx = {}
+        for_stack = []          # (body_start_idx, remaining_iterations)
+        diamond = None          # active balanced if/else, see below
+        idx = start
+        while idx < end:
+            if idx in sl_by_idx:
+                sl = sl_by_idx[idx]
+            else:
+                sl = SrcLine(idx + 1, self.lines[idx])
+                sl_by_idx[idx] = sl
+                src_lines.append(sl)
             sl.cum_before = cum
+            sl.cum_after = cum      # default (overwritten below for code lines)
             code = sl.code
+            stripped = code.strip()
+
+            # FOR var,a,b[,c] : push a replay frame (count handled at NEXT)
+            mFor = re.match(r"(?i)^FOR\s+\w+\s*,(.+)$", stripped)
+            if mFor and ":" not in code:
+                iters = self._for_iter_count(mFor.group(1))
+                for_stack.append([idx + 1, iters])
+                idx += 1
+                continue
+            if re.match(r"(?i)^NEXT\b", stripped) and ":" not in code and for_stack:
+                frame = for_stack[-1]
+                frame[1] -= 1
+                if frame[1] > 0:
+                    idx = frame[0]          # replay the body
+                else:
+                    for_stack.pop()
+                    idx += 1
+                continue
+
+            # --- balanced if/else "diamond" -------------------------------
+            # A forward conditional branch with an unconditional BRA/JMP before
+            # its target is an if/else: two paths that must take equal cycles.
+            # We walk path A (fall-through to the BRA), then path B (target ->
+            # merge), check they are balanced, and use one cost for the total.
+            mBr = re.match(r"(?i)^(b[a-z][a-z])\s+([A-Za-z_]\w*)\s*$", stripped)
+            if (diamond is None and mBr and mBr.group(1).lower() != "bra"
+                    and mBr.group(1).lower() in BRANCHES):
+                L = self._find_label_line(mBr.group(2), idx + 1, end)
+                jmp = None
+                for j in range(idx + 1, L) if L else []:
+                    mj = re.match(r"(?i)^(bra|jmp)\s+([A-Za-z_]\w*)\s*$",
+                                  split_comment(self.lines[j])[0].strip())
+                    if mj:
+                        jmp = (j, mj.group(2))
+                        break
+                if L is not None and jmp is not None:
+                    cum += 2                      # branch not-taken (path A)
+                    sl.line_cost = 2
+                    sl.cum_after = cum
+                    diamond = {"entry": cum - 2, "L": L, "costA": None,
+                               "phase": "A", "merge": None, "br_line": sl.lineno}
+                    idx += 1
+                    continue
+            if diamond and diamond["phase"] == "A":
+                mJ = re.match(r"(?i)^(bra|jmp)\s+([A-Za-z_]\w*)\s*$", stripped)
+                if mJ:
+                    cum += 3                      # BRA/JMP taken
+                    sl.line_cost = 3
+                    sl.cum_after = cum
+                    diamond["costA"] = cum - diamond["entry"]
+                    diamond["merge"] = self._find_label_line(mJ.group(2), start, end)
+                    diamond["phase"] = "B"
+                    cum = diamond["entry"] + 3    # path B begins (branch taken)
+                    idx = diamond["L"]
+                    continue
+            if (diamond and diamond["phase"] == "B"
+                    and diamond["merge"] is not None and idx == diamond["merge"]):
+                costB = cum - diamond["entry"]
+                if diamond["costA"] == costB:
+                    self.add("OK", f"balanced branch at line {diamond['br_line']}: "
+                             f"both paths {costB}c")
+                else:
+                    self.add("ERROR", f"UNBALANCED branch at line {diamond['br_line']}: "
+                             f"path A {diamond['costA']}c vs path B {costB}c "
+                             "(scanline timing will vary)")
+                cum = diamond["entry"] + diamond["costA"]
+                diamond = None
+                # fall through to process the merge label line normally
 
             # statements separated by ':' (quote-aware)
             raw_stmts = split_statements(code)
             for raw_stmt in raw_stmts:
                 st = raw_stmt.strip()
-                if st == "":
-                    continue
+                if st == "" or st in ("{", "}", "\\{", "\\}"):
+                    continue   # anonymous-block delimiters: zero cost
                 # label
                 if st.startswith("."):
                     mLbl = re.match(r"^\.([A-Za-z_][A-Za-z0-9_]*)", st)
@@ -519,6 +621,7 @@ class Analyser:
                     self._record_reg_write(selected_reg, val, cum, sl)
 
             sl.cum_after = cum
+            idx += 1
 
         if pending_adjust:
             cum += pending_adjust
@@ -528,28 +631,47 @@ class Analyser:
         self._post_checks()
         return src_lines
 
+    def _find_label_line(self, name, lo, hi):
+        """Index of the line defining `.name` within [lo, hi), or None."""
+        for i in range(lo, hi):
+            if re.match(r"^\.%s\b" % re.escape(name), self.lines[i].strip()):
+                return i
+        return None
+
+    def _for_iter_count(self, rest):
+        """Iteration count of `FOR var,a,b[,c]` from the part after the var."""
+        parts = [p.strip() for p in rest.split(",")]
+        try:
+            a = eval_expr(parts[0], self.symbols)
+            b = eval_expr(parts[1], self.symbols)
+            c = eval_expr(parts[2], self.symbols) if len(parts) > 2 else 1
+        except (CostError, IndexError):
+            return 1
+        if c == 0:
+            return 1
+        return max(0, (b - a) // c + 1)
+
     def detect_trip_count(self, loop):
-        """Best-effort loop trip count from the induction variable:
-        last ldx/ldy #INIT before the loop label, plus cpx/cpy #CMP and inx/dex
-        inside the body. Returns int trips or None."""
+        """Best-effort loop trip count. Handles two patterns:
+          1. explicit compare:  ldx #INIT ... inx/dex ... cpx #CMP : bne
+          2. decrement-to-zero:  (lda #N:sta MEM | ldx #N) ... dec MEM/dex : bne
+        Returns int trips or None."""
         start, end = self.func_range
-        loop_line = None
-        branch_line = loop["lineno"]
-        # find the loop label line index
-        for i in range(start, end):
-            s = self.lines[i].strip()
-            if re.match(r"^\.%s\b" % re.escape(loop["label"]), s):
-                loop_line = i
-                break
+        loop_line = next((i for i in range(start, end)
+                          if re.match(r"^\.%s\b" % re.escape(loop["label"]),
+                                      self.lines[i].strip())), None)
         if loop_line is None:
             return None
-        reg = None      # 'x' or 'y'
-        cmp_val = None
-        step = None
-        # body = loop_line .. branch_line (inclusive)
-        for i in range(loop_line, branch_line):
-            for st in split_statements(split_comment(self.lines[i])[0]):
-                st = st.strip()
+        branch_idx = loop["lineno"] - 1     # lineno is 1-based; self.lines is 0-based
+        body = range(loop_line, branch_idx + 1)
+
+        def stmts(i):
+            return [s.strip() for s in split_statements(split_comment(self.lines[i])[0])]
+
+        reg = cmp_val = step = None
+        dec_target = None       # 'x'/'y' or a memory symbol decremented to zero
+        for i in body:
+            for st in stmts(i):
                 m = re.match(r"(?i)^(cpx|cpy)\b\s*#(.+)$", st)
                 if m:
                     reg = m.group(1).lower()[-1]
@@ -557,44 +679,87 @@ class Analyser:
                         cmp_val = eval_expr(m.group(2), self.symbols)
                     except CostError:
                         cmp_val = None
-                if re.match(r"(?i)^inx\b", st):
-                    step = ("x", +1)
-                elif re.match(r"(?i)^iny\b", st):
-                    step = ("y", +1)
-                elif re.match(r"(?i)^dex\b", st):
-                    step = ("x", -1)
-                elif re.match(r"(?i)^dey\b", st):
-                    step = ("y", -1)
-        if reg is None or cmp_val is None or step is None:
-            return None
-        # find INIT: last ldx/ldy #N before the loop label
+                for mn, s in (("inx", ("x", +1)), ("iny", ("y", +1)),
+                              ("dex", ("x", -1)), ("dey", ("y", -1))):
+                    if re.match(r"(?i)^%s\b" % mn, st):
+                        step = s
+                        if s[1] == -1:
+                            dec_target = s[0]
+                md = re.match(r"(?i)^dec\s+([A-Za-z_]\w*)", st)
+                if md:
+                    dec_target = md.group(1)
+
+        # pattern 1: explicit compare
+        if reg is not None and cmp_val is not None and step is not None:
+            init = self._find_imm_init(start, loop_line, "ld%s" % reg)
+            if init is not None:
+                return (cmp_val - init) if step[1] == +1 else (init - cmp_val)
+
+        # pattern 2: decrement-to-zero (BNE exits at 0) -> trips = initial value
+        branch = next((st for st in stmts(branch_idx)
+                       if re.match(r"(?i)^b[a-z][a-z]\b", st)), "")
+        if dec_target is not None and re.match(r"(?i)^bne\b", branch):
+            if dec_target in ("x", "y"):
+                init = self._find_imm_init(start, loop_line, "ld%s" % dec_target)
+            else:
+                init = self._find_mem_init(start, loop_line, dec_target)
+            if init is not None:
+                return init
+        return None
+
+    def _find_imm_init(self, lo, hi, mnem):
+        """Last `<mnem> #N` immediate load before line hi -> N."""
         init = None
-        for i in range(start, loop_line):
+        for i in range(lo, hi):
             for st in split_statements(split_comment(self.lines[i])[0]):
-                m = re.match(r"(?i)^ld%s\b\s*#(.+)$" % reg, st.strip())
+                m = re.match(r"(?i)^%s\b\s*#(.+)$" % mnem, st.strip())
                 if m:
                     try:
                         init = eval_expr(m.group(1), self.symbols)
                     except CostError:
                         pass
-        if init is None:
-            return None
-        # bne exits on reg == cmp_val
-        if step[1] == +1:
-            return cmp_val - init
-        return init - cmp_val
+        return init
+
+    def _find_mem_init(self, lo, hi, mem):
+        """Last `lda #N ... sta MEM` (or `stz MEM`) before line hi -> N.
+        The lda may be on an earlier line than the sta, so track across lines."""
+        init = None
+        last_imm = None
+        for i in range(lo, hi):
+            for st in split_statements(split_comment(self.lines[i])[0]):
+                st = st.strip()
+                m = re.match(r"(?i)^lda\s*#(.+)$", st)
+                if m:
+                    try:
+                        last_imm = eval_expr(m.group(1), self.symbols)
+                    except CostError:
+                        last_imm = None
+                if re.match(r"(?i)^stz\s+%s\b" % re.escape(mem), st):
+                    init = 0
+                elif re.match(r"(?i)^sta\s+%s\b" % re.escape(mem), st) and last_imm is not None:
+                    init = last_imm
+        return init
 
     # mnemonics whose indexed/indirect-Y READ costs +1c on a page cross
     PAGECROSS_READS = {"lda", "ldx", "ldy", "cmp", "cpx", "cpy",
                        "adc", "sbc", "and", "ora", "eor", "bit"}
 
     def _check_page_cross(self, mnem, mode, operand, sl):
-        """Indexed reads (abs,X / abs,Y / (zp),Y) cost +1c AND become
-        data-dependent if the table crosses a 256-byte page. Require the table
-        to be provably page-aligned; otherwise warn."""
+        """Indexed reads (abs,X / abs,Y / (zp),Y) cost +1c on a page cross.
+        abs,X/Y into a table is a static, fixable concern (page-align the table).
+        (zp),Y depends on the runtime pointer+Y, so it's a soft call-out: it only
+        breaks cycle-exactness for RVI CRTC writes, not for vertical-rupture
+        effects whose register writes just need to land within the scanline."""
         if mnem not in self.PAGECROSS_READS:
             return
-        if mode not in ("abx", "aby", "izy"):
+        if mode == "izy":
+            sl.izy_pagecross = True
+            sl.flags.append(("INFO",
+                f"{mnem} {operand}: (zp),Y may cross a page (+1c, runtime-dependent). "
+                "Fine for vertical-rupture (no cycle-exact CRTC writes); verify if "
+                "this is on a cycle-exact RVI path."))
+            return
+        if mode not in ("abx", "aby"):
             return
         base = re.sub(r"\s*,\s*[xXyY]\s*$", "", operand.strip())
         base = base.lstrip("(").rstrip(")")
@@ -766,13 +931,20 @@ def build_report(an):
     return "\n".join(out)
 
 
-def rewrite(an, scanline, annotate_missing=False):
+XPAGE_MARK = "  [xpage] may cross page +1c"
+XPAGE_MARK_RE = re.compile(r"\s*\[xpage\][^\n]*")
+
+
+def rewrite(an, scanline, annotate_missing=False, add_running_totals=False,
+            note_page_cross=False, vann=None):
     """Return new full-file text with updated per-line and running comments.
 
     Rules (conservative - only touch numbers, never prose):
       * a `<== Nc` running-total marker -> updated to the computed cum.
       * a `; Nc` per-line cost number   -> updated to the computed line cost.
-      * a code line with cost > 0 and NO comment at all -> append `; Nc`.
+      * a code line with cost > 0 and NO comment at all (annotate_missing) -> `; Nc`.
+      * a blank line after a code block (add_running_totals) -> insert `\\\\ <== Nc`.
+      * an (zp),Y page-cross read (note_page_cross) -> append a `[xpage]` note.
     Prose comments without a number are left untouched.
     """
     lines = list(an.lines)
@@ -787,26 +959,58 @@ def rewrite(an, scanline, annotate_missing=False):
             if sl.line_cost > 0:
                 # strip any stale odd-stretch marker first (idempotent), then
                 # re-insert it right after the count if still applicable.
-                stripped = ODD_MARK_RE.sub("", comment)
+                stripped = XPAGE_MARK_RE.sub("", ODD_MARK_RE.sub("", comment))
                 repl = f"; {sl.line_cost}c" + (ODD_MARK if sl.odd_stretch else "")
                 new_comment = PERLINE_RE.sub(repl, stripped, count=1)
+                if note_page_cross and sl.izy_pagecross:
+                    new_comment = new_comment.rstrip() + XPAGE_MARK
                 lines[lineno - 1] = raw[:idx] + new_comment
         elif (annotate_missing and sl.has_instr and not sl.is_wait
               and code.strip() and comment == ""):
             mark = ODD_MARK if sl.odd_stretch else ""
-            lines[lineno - 1] = code.rstrip() + "\t\t; " + f"{sl.line_cost}c" + mark
-    return "\n".join(lines) + "\n"
+            extra = XPAGE_MARK if (note_page_cross and sl.izy_pagecross) else ""
+            lines[lineno - 1] = code.rstrip() + "\t\t; " + f"{sl.line_cost}c" + mark + extra
+
+    # Vertical [vert] markers are length-preserving, so apply them here (before
+    # any line insertion below) using the original line numbers.
+    if vann:
+        apply_vertical_annotations(lines, vann)
+
+    insert_before = {}      # original lineno -> new `\\ <== Nc` line to insert above it
+    if add_running_totals:
+        # Insert a `\\ <== Nc` running total just before the blank line that
+        # closes a code block (-> code / <== Nc / blank, the author's style).
+        # Idempotent: on re-run the inserted line is real, so the block no longer
+        # ends in code-then-blank and nothing new is inserted (number updated above).
+        prev_code = None
+        for sl in an.src_lines:
+            code, comment, _ = split_comment(lines[sl.lineno - 1])
+            blank = code.strip() == "" and comment.strip() == ""
+            if blank and prev_code is not None:
+                insert_before[sl.lineno] = "\t\\\\ <== " + render_running(prev_code.cum_after, scanline)
+                prev_code = None
+            elif code.strip():
+                prev_code = sl if (sl.has_instr or sl.line_cost > 0) else None
+            elif comment.strip():
+                prev_code = None
+
+    out = []
+    for i, line in enumerate(lines):
+        if (i + 1) in insert_before:
+            out.append(insert_before[i + 1])
+        out.append(line)
+    return "\n".join(out) + "\n"
 
 
 # ----------------------------------------------------------------------------
 
 VERT_MARK_RE = re.compile(r"\s*(?:\\\\ )?\[vert\][^\n]*$")
 
-def apply_vertical_annotations(text, ann):
-    """Add idempotent `\\\\ [vert] ...` markers to the given line numbers.
-    Only annotates lines with no existing `;`/`<==` comment (so we never clobber
-    horizontal cost comments); other target lines are left to the report."""
-    lines = text.splitlines()
+def apply_vertical_annotations(lines, ann):
+    """Add idempotent `\\\\ [vert] ...` markers to the given line numbers, in
+    place on the `lines` list (length-preserving). Only annotates lines with no
+    existing `;`/`<==` comment (so we never clobber horizontal cost comments);
+    other target lines are left to the report."""
     for lineno, note in ann.items():
         if lineno < 1 or lineno > len(lines):
             continue
@@ -819,7 +1023,7 @@ def apply_vertical_annotations(text, ann):
             # a `<== ...0c` scanline-boundary marker: append alongside it
             lines[lineno - 1] = raw.rstrip() + "  [vert] " + note
         # else: a real cost/prose comment -> leave it (covered by the report)
-    return "\n".join(lines) + "\n"
+    return lines
 
 
 def main():
@@ -831,6 +1035,10 @@ def main():
     ap.add_argument("--out", help="write rewritten file here instead of in place (for diffing)")
     ap.add_argument("--annotate-missing", action="store_true",
                     help="also ADD a ; Nc cost comment to instruction lines that have none")
+    ap.add_argument("--add-running-totals", action="store_true",
+                    help="insert a \\\\ <== Nc running total on blank lines after code blocks")
+    ap.add_argument("--note-page-cross", action="store_true",
+                    help="append a [xpage] note to (zp),Y reads that may cross a page")
     args = ap.parse_args()
 
     cfg_path = Path(args.config)
@@ -859,9 +1067,9 @@ def main():
             print(f"  [{sev}] {msg}")
 
     if args.write or args.out:
-        newtext = rewrite(an, an.scanline, annotate_missing=args.annotate_missing)
-        if vann:
-            newtext = apply_vertical_annotations(newtext, vann)
+        newtext = rewrite(an, an.scanline, annotate_missing=args.annotate_missing,
+                          add_running_totals=args.add_running_totals,
+                          note_page_cross=args.note_page_cross, vann=vann)
         target = Path(args.out) if args.out else src_path
         target.write_text(newtext)
         print(f"\n[written] {target}")
