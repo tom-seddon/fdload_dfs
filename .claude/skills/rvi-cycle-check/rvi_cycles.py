@@ -970,11 +970,20 @@ def rewrite(an, scanline, annotate_missing=False, add_running_totals=False,
                 if note_page_cross and sl.izy_pagecross:
                     new_comment = new_comment.rstrip() + XPAGE_MARK
                 lines[lineno - 1] = raw[:idx] + new_comment
-        elif (annotate_missing and sl.has_instr and not sl.is_wait
-              and code.strip() and comment == ""):
+        elif annotate_missing and sl.has_instr and not sl.is_wait and sl.line_cost > 0:
             mark = ODD_MARK if sl.odd_stretch else ""
             extra = XPAGE_MARK if (note_page_cross and sl.izy_pagecross) else ""
-            lines[lineno - 1] = code.rstrip() + "\t\t; " + f"{sl.line_cost}c" + mark + extra
+            if comment == "":
+                lines[lineno - 1] = code.rstrip() + "\t\t; " + f"{sl.line_cost}c" + mark + extra
+            else:
+                # existing `;` PROSE comment with no `; Nc` cost: insert the cost
+                # right after the `;` -> `; Nc <prose>` (normalised spacing so the
+                # update path is idempotent). `\\`-style comments are left alone.
+                m = re.match(r"^;\s*(.*)$", comment)
+                if m:
+                    new_comment = ("; " + f"{sl.line_cost}c" + mark + extra
+                                   + " " + m.group(1)).rstrip()
+                    lines[lineno - 1] = raw[:idx] + new_comment
 
     # Vertical [vert] markers are length-preserving, so apply them here (before
     # any line insertion below) using the original line numbers.
