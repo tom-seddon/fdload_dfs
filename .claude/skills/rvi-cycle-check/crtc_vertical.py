@@ -219,4 +219,38 @@ def analyse_vertical(an, vcfg):
                       default=None)
         if r7_line:
             ann[r7_line] = f"R7={R7}: vsync @ PAL line {tail_start_pal + R7 * (R9 + 1):g}"
+
+    # Mark the start of each new PAL scanline in the setup/fixup regions. These
+    # are the `<== ...0c` running-total boundaries (cum hits a multiple of 128).
+    # Inside the loop one source line stands for `trips` lines, so it's covered
+    # by the loop-range annotation above and skipped here.
+    branch_line = loop["lineno"]
+    extra = (trips - 1) * iter_len
+    pal_points = {start + 1: entry_pal, loop_label_line: loop_first}
+    for sl in an.src_lines:
+        if loop_label_line <= sl.lineno <= branch_line:
+            continue
+        if sl.cum_after is None or sl.cum_after % scan != 0 or sl.cum_after == 0:
+            continue
+        if "<==" not in sl.comment:
+            continue
+        real_cum = sl.cum_after + (extra if sl.lineno > branch_line else 0)
+        pal = real_cum // scan + entry_pal
+        ann[sl.lineno] = f"PAL line {pal}"
+        pal_points[sl.lineno] = pal
+
+    # Catch stale hand-written "start of scanline N" prose: compare N against the
+    # nearest computed PAL point.
+    for sl in an.src_lines:
+        m = re.search(r"(?i)start of scanline\s+(-?\d+)", sl.comment)
+        if not m or not pal_points:
+            continue
+        claimed = int(m.group(1))
+        near = min(pal_points, key=lambda L: abs(L - sl.lineno))
+        if abs(near - sl.lineno) > 12:
+            continue
+        computed = pal_points[near]
+        if claimed != computed:
+            F.append(("WARN", f"stale comment (line {sl.lineno}): 'scanline {claimed}' "
+                      f"but the computed PAL line here is {computed}"))
     return F, ann, S

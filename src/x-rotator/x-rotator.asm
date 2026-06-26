@@ -603,7 +603,7 @@ EQUW dejitter_9
 	\\ <== 122c
 	
 	sta &FE01				; 6c R0=95 horizontal total = 96
-	\\ <== 128c/0c
+	\\ <== 128c/0c  [vert] PAL line 0
 
 	\\ <=== start of scanline 0 HCC=0 VCC=0
 	\\ start segment 0 [0-99]
@@ -729,7 +729,7 @@ EQUW dejitter_9
 
 	.fx_draw_done
 
-	\\ start of scanline 255
+	\\ start of scanline 247
 	NOP
 
 	\\ Need to get scanlines & character rows back in sync...
@@ -738,7 +738,7 @@ EQUW dejitter_9
 
 	lda #95							; 2c
 	sta &FE01						; 5c (odd stretch +1) R0=95 horizontal total = 96
-	\\ <== 128c/0c
+	\\ <== 128c/0c  [vert] PAL line 247
 
 	\\ Set R9 so we get back to scanline 0 next line
 	LDA #9:STA &fe00				; 8c
@@ -765,12 +765,12 @@ EQUW dejitter_9
 
 	\\ <== 120c
 
-	\\ Should be start of scanline 256!
+	\\ Should be start of scanline 248!
 
 	\\ got to catch this before 2c!
 	lda #127
 	sta &fe01				; R0=127 back to a full width line!
-	\\ <== 128c/0c
+	\\ <== 128c/0c  [vert] PAL line 248
 
 	lda #9:sta &fe00
 	lda #7:sta &fe01		; R9=7 scanlines per row = 8

@@ -800,7 +800,7 @@ def rewrite(an, scanline, annotate_missing=False):
 
 # ----------------------------------------------------------------------------
 
-VERT_MARK_RE = re.compile(r"\s*\\\\ \[vert\][^\n]*$")
+VERT_MARK_RE = re.compile(r"\s*(?:\\\\ )?\[vert\][^\n]*$")
 
 def apply_vertical_annotations(text, ann):
     """Add idempotent `\\\\ [vert] ...` markers to the given line numbers.
@@ -812,9 +812,13 @@ def apply_vertical_annotations(text, ann):
             continue
         raw = VERT_MARK_RE.sub("", lines[lineno - 1])
         code, comment, idx = split_comment(raw)
-        if comment.strip() != "":
-            continue            # has a real comment already; leave it
-        lines[lineno - 1] = code.rstrip() + "\t\t\\\\ [vert] " + note
+        if comment.strip() == "":
+            # comment-free line: add a standalone [vert] comment
+            lines[lineno - 1] = code.rstrip() + "\t\t\\\\ [vert] " + note
+        elif RUNNING_RE.search(comment):
+            # a `<== ...0c` scanline-boundary marker: append alongside it
+            lines[lineno - 1] = raw.rstrip() + "  [vert] " + note
+        # else: a real cost/prose comment -> leave it (covered by the report)
     return "\n".join(lines) + "\n"
 
 

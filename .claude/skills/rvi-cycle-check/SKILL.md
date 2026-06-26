@@ -185,7 +185,15 @@ after RTS**:
 
 **Checks:** frame total == `frame_lines` (312); exactly one vsync at
 `target_vsync_pal_line`; tail frame closes on the frame boundary (fixed point);
-rupture sanity (R7 parked / loop R4 < R7); visible-line estimate (R6).
+rupture sanity (R7 parked / loop R4 < R7); visible-line estimate (R6); **stale
+`start of scanline N` prose** (warns when a hand comment disagrees with the
+computed PAL line — e.g. a comment written for a different `SHORTEN_BY_ROWS`).
+
+**PAL-line annotations.** On `--write` the rewriter adds idempotent `[vert]`
+markers: the function-entry and loop-label lines get a `\\ [vert] ...` comment,
+and each new PAL scanline start in the setup/fixup is tagged on its `<== ...0c`
+boundary line, e.g. `\\ <== 128c/0c  [vert] PAL line 247`. Inside the loop one
+source line stands for `trips` lines, so the loop label carries the range.
 
 **Config `vertical` block:** `entry_pal_line` (−1), `frame_lines` (312),
 `target_vsync_pal_line` (272/280), `entry_R5` (0), `loop_iterations` (null →
