@@ -57,8 +57,11 @@ python .../rvi_cycles.py --config .../<effect>.json --write
 
 Write flags (all opt-in; default just updates existing numbers + adds `[vert]`):
 - `--annotate-missing` — ADD `; Nc` to instruction lines that have no comment.
-- `--add-running-totals` — insert a `\\ <== Nc` running total before the blank
-  line that closes each code block (for effects that don't already have them).
+- `--add-running-totals` — insert `\\ <== Nc` running totals (for effects that
+  don't already have them): before the blank line that closes each code block;
+  at the **start and end of every loop**; and at each **128c/0c wrap** mid-block
+  (a `\\ <== 128c/0c` line right after the crossing instruction, no surrounding
+  blank). Idempotent — wrap markers are preserved, never re-numbered or doubled.
 - `--note-page-cross` — append an `[xpage]` note to `(zp),Y` reads that may cross
   a page (see below).
 - `--file` overrides the source path in the config.

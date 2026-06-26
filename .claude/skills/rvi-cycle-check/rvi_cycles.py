@@ -953,8 +953,13 @@ def rewrite(an, scanline, annotate_missing=False, add_running_totals=False,
         raw = lines[lineno - 1]
         code, comment, idx = split_comment(raw)
         if RUNNING_RE.search(comment):
-            new_comment = RUNNING_RE.sub("<== " + render_running(sl.cum_after, scanline), comment)
-            lines[lineno - 1] = raw[:idx] + new_comment
+            # A `<== 128c/0c` marker on a line whose cum is NOT on a boundary is a
+            # mid-block "wrap" marker (the count just wrapped past 128) -> leave it.
+            is_wrap = (re.search(r"<==\s*%dc\s*/\s*0c" % scanline, comment)
+                       and sl.cum_after % scanline != 0)
+            if not is_wrap:
+                new_comment = RUNNING_RE.sub("<== " + render_running(sl.cum_after, scanline), comment)
+                lines[lineno - 1] = raw[:idx] + new_comment
         elif PERLINE_RE.search(comment):
             if sl.line_cost > 0:
                 # strip any stale odd-stretch marker first (idempotent), then
@@ -976,29 +981,57 @@ def rewrite(an, scanline, annotate_missing=False, add_running_totals=False,
     if vann:
         apply_vertical_annotations(lines, vann)
 
-    insert_before = {}      # original lineno -> new `\\ <== Nc` line to insert above it
+    # Running-total insertions, keyed by "insert this text BEFORE line N".
+    inserts = {}
+
+    def already_marker(lineno):
+        return 1 <= lineno <= len(lines) and RUNNING_RE.search(split_comment(lines[lineno - 1])[1])
+
+    def add_insert(lineno, cum, force_boundary=False):
+        if already_marker(lineno):
+            return                       # idempotent: a marker is already here
+        v = render_running(scanline, scanline) if force_boundary else render_running(cum, scanline)
+        inserts.setdefault(lineno, [])
+        text = "\t\\\\ <== " + v
+        if text not in inserts[lineno]:
+            inserts[lineno].append(text)
+
     if add_running_totals:
-        # Insert a `\\ <== Nc` running total just before the blank line that
-        # closes a code block (-> code / <== Nc / blank, the author's style).
-        # Idempotent: on re-run the inserted line is real, so the block no longer
-        # ends in code-then-blank and nothing new is inserted (number updated above).
+        by_lineno_sl = {sl.lineno: sl for sl in an.src_lines}
+        # (a) end of each code block: before the blank line that follows code
         prev_code = None
         for sl in an.src_lines:
             code, comment, _ = split_comment(lines[sl.lineno - 1])
-            blank = code.strip() == "" and comment.strip() == ""
-            if blank and prev_code is not None:
-                insert_before[sl.lineno] = "\t\\\\ <== " + render_running(prev_code.cum_after, scanline)
-                prev_code = None
+            if code.strip() == "" and comment.strip() == "":      # blank
+                if prev_code is not None:
+                    add_insert(sl.lineno, prev_code.cum_after)
+                    prev_code = None
             elif code.strip():
                 prev_code = sl if (sl.has_instr or sl.line_cost > 0) else None
             elif comment.strip():
                 prev_code = None
+        # (b) where the running count wraps 128c/0c mid-block: after the crossing
+        #     line, with no surrounding blank.
+        for sl in an.src_lines:
+            if (sl.cum_before is not None
+                    and sl.cum_after // scanline > sl.cum_before // scanline):
+                add_insert(sl.lineno + 1, sl.cum_after, force_boundary=True)
+        # (c) start and end of every loop
+        for loop in an.loops:
+            li = an._find_label_line(loop["label"], *an.func_range)
+            if li is not None and (li + 1) in by_lineno_sl:
+                add_insert(li + 2, by_lineno_sl[li + 1].cum_after)        # after label
+            bsl = by_lineno_sl.get(loop["lineno"])
+            if bsl is not None:
+                add_insert(loop["lineno"] + 1, bsl.cum_after)             # after branch
 
     out = []
     for i, line in enumerate(lines):
-        if (i + 1) in insert_before:
-            out.append(insert_before[i + 1])
+        for t in inserts.get(i + 1, []):
+            out.append(t)
         out.append(line)
+    for t in inserts.get(len(lines) + 1, []):
+        out.append(t)
     return "\n".join(out) + "\n"
 
 
