@@ -350,6 +350,7 @@ class Analyser:
         self.total_cum = None       # cumulative cycles at end of function (RTS)
         self.sub_lines = {}         # lineno -> SrcLine for inlined subroutine bodies
         self.sub_phase_conflict = set()  # subroutine labels walked at >1 phase
+        self.sub_totals = {}        # label -> {body, rts_idx} for inlined subroutines
         self._scan_top_level()
 
     def add(self, sev, msg):
@@ -816,6 +817,8 @@ class Analyser:
                     line_cost += 6
                     line_has_instr = True
                     total += 6
+                    if label and label not in self.sub_totals:
+                        self.sub_totals[label] = {"body": total, "rts_idx": idx}
                     done = (total, True)
                     break
                 if mnem in BRANCHES or mnem == "jmp":
@@ -1216,6 +1219,30 @@ def rewrite(an, scanline, annotate_missing=False, add_running_totals=False,
                     new_comment = ("; " + f"{sl.line_cost}c" + mark + extra
                                    + " " + m.group(1)).rstrip()
                     lines[lineno - 1] = raw[:idx] + new_comment
+
+    # End-of-subroutine total comment. Any subroutine we cycle-count by inlining
+    # gets a corrected total on its closing `}` (or RTS line). Convention matches
+    # the codebase (e.g. cycles_wait_128's `= 128c`): the FULL call cost incl. the
+    # 6c JSR, with the body breakdown for clarity.
+    for label, info in an.sub_totals.items():
+        body = info["body"]
+        total_txt = f"total = {body}c body + 6c JSR = {body + 6}c"
+        rts_idx = info["rts_idx"]
+        target = None
+        for j in range(rts_idx, min(rts_idx + 4, len(lines))):
+            if split_comment(lines[j])[0].strip().startswith("}"):
+                target = j
+                break
+        if target is None:
+            target = rts_idx
+        code, comment, _ = split_comment(lines[target])
+        if re.search(r"(?i)\btotal\b", comment):
+            # replace an existing total comment (idempotent re-write)
+            lines[target] = code.rstrip() + "\t\\\\ " + total_txt
+        elif comment.strip() == "":
+            lines[target] = code.rstrip() + "\t\\\\ " + total_txt
+        else:
+            lines[target] = lines[target].rstrip() + "  \\\\ " + total_txt
 
     # Vertical [vert] markers are length-preserving, so apply them here (before
     # any line insertion below) using the original line numbers.

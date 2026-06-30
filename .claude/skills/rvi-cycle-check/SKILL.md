@@ -195,11 +195,14 @@ scanning the source's `ORG <&100` region for ZP labels; add others via
   straight-line routine is **inline-walked** at its actual call-site phase, so
   its stretched accesses are costed correctly. Those subroutine body lines also
   get their own per-line `; Nc` annotations (corrected against any stale hand
-  comments) — at the phase of the real call site. If a routine is called from
-  two different phases its costs differ; the tool flags this and annotates using
-  the first call site. (A `\\`-prose summary like `\\ total = …c` inside the
-  routine is left untouched — check it by hand.) `RTS`-less / branching
-  subroutines are not inlined (fall back to flat 6c).
+  comments) — at the phase of the real call site — and a corrected **total
+  comment** on the routine's closing `}` (or RTS line): `\\ total = <body>c body
+  + 6c JSR = <call>c`, the full call cost matching what the caller's `JSR` line
+  shows (convention as in `cycles_wait_128`'s `= 128c`). An existing `total`
+  comment is replaced in place (idempotent). If a routine is called from two
+  different phases its costs differ; the tool flags this and annotates using the
+  first call site. `RTS`-less / branching subroutines are not inlined (fall back
+  to flat 6c).
 - **Soft-window rupture loops** — when an effect has *no* `exact_completion`
   register constraints (all `before_row_end`), a rupture loop whose length is
   **not** an exact scanline multiple is reported as a per-iteration **drift WARN**
