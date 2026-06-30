@@ -33,6 +33,120 @@ correctness are deferred (documented in SKILL.md).
 import re
 
 
+def build_effect_summary(an, vcfg):
+    """Return a short (~5-line) human summary of the effect for a header block at
+    the top of the draw function: main components (rupture / RVI, scanlines per
+    row, rows), a one-line gloss of setup / loop / fixup, and any gotchas the
+    reader should know (cycle-aligned branches, cycle drift, page crossings).
+
+    Auto-derived from the analysis; keep it terse. Returns a list of body lines
+    (no comment markers)."""
+    from rvi_cycles import split_comment, split_statements
+    import re as _re
+
+    scan = an.scanline
+    frame_lines = vcfg.get("frame_lines", 312)
+    if not an.loops:
+        return ["EFFECT : no rupture loop detected -- summary unavailable"]
+
+    loop = max(an.loops, key=lambda L: L["iter_len"])
+    iter_len = loop["iter_len"]
+    lines_each = iter_len // scan
+    loop_start_cum = loop["label_cum"] - an.entry_phase
+    trips = vcfg.get("loop_iterations") or an.detect_trip_count(loop) or 0
+
+    # registers written in setup (<= loop start) vs fixup (> loop end)
+    def regset(pred):
+        return sorted({rw["reg"] for rw in an.reg_writes
+                       if rw["reg"] is not None and pred(rw["cum"])})
+    setup_regs = regset(lambda c: c <= loop_start_cum)
+    fixup_regs = regset(lambda c: c > loop_start_cum + iter_len)
+
+    # R9 in force during the loop -> scanlines per row
+    loop_R9 = 0
+    for rw in sorted(an.reg_writes, key=lambda r: r["cum"]):
+        if rw["reg"] == 9 and rw["cum"] <= loop_start_cum and rw["val"] is not None:
+            loop_R9 = rw["val"]
+    spr = loop_R9 + 1
+    rows_per_iter = max(1, lines_each // spr)
+    rows = trips * rows_per_iter
+    total_loop_lines = trips * lines_each
+
+    # final tail frame regs
+    final = {}
+    for rw in sorted(an.reg_writes, key=lambda r: r["cum"]):
+        if rw["reg"] is not None:
+            final[rw["reg"]] = rw["val"]
+
+    kind = "Vertical Rupture" if an.soft_window else "Vertical Rupture + horizontal RVI"
+    rvi = "no per-scanline CRTC writes" if an.soft_window else "per-scanline R0 (cycle-exact)"
+    vsync = vcfg.get("target_vsync_pal_line")
+    vtxt = f", vsync PAL {vsync}" if vsync is not None else ""
+
+    setup_lines = loop_start_cum / scan
+    fixup_cum = (an.total_cum - an.entry_phase) - (loop_start_cum + iter_len)
+    fixup_lines = fixup_cum / scan
+
+    # JSR calls inside the loop body (for the LOOP gloss)
+    s, e = an.func_range
+    lbl_line = an._find_label_line(loop["label"], s, e)
+    jsrs = []
+    if lbl_line is not None:
+        for i in range(lbl_line, loop["lineno"]):
+            for st in split_statements(split_comment(an.lines[i])[0]):
+                m = _re.match(r"(?i)^jsr\s+([A-Za-z_]\w*)", st.strip())
+                if m:
+                    jsrs.append(m.group(1))
+    jcount = {}
+    for j in jsrs:
+        jcount[j] = jcount.get(j, 0) + 1
+    jtxt = ", ".join((f"{c}x JSR {n}" if c > 1 else f"JSR {n}") for n, c in jcount.items())
+    loop_calls = f" -- calls {jtxt}" if jtxt else " -- straight-line"
+
+    unroll = f", {rows_per_iter} rows/iter (unrolled)" if rows_per_iter > 1 else ""
+
+    def rlist(rs):
+        return "/".join(f"R{r}" for r in rs) if rs else "none"
+
+    out = []
+    out.append(f"EFFECT : {kind} -- {spr} scanlines/row x {rows} rows "
+               f"({total_loop_lines} lines){unroll}; PAL {frame_lines}{vtxt}; {rvi}")
+    out.append(f"SETUP  : ~{setup_lines:.1f} lines -- rupture CRTC regs {rlist(setup_regs)} "
+               "set, padded to the scanline boundary")
+    out.append(f"LOOP   : {trips}x @ {iter_len}c ({lines_each} line/iter){loop_calls}")
+    out.append(f"FIXUP  : ~{fixup_lines:.1f} lines -- tail CRTC frame {rlist(fixup_regs)} "
+               "restored, RTS; free-runs to the frame boundary")
+
+    # --- gotchas -------------------------------------------------------------
+    gotchas = []
+    for sev, msg in an.findings:
+        if sev == "ERROR" and "UNBALANCED" in msg:
+            gotchas.append("UNBALANCED branch -- scanline timing varies (see report)")
+        elif sev == "OK" and "balanced branch" in msg:
+            mm = _re.search(r"both paths (\d+)c", msg)
+            gotchas.append(f"balanced branch ({mm.group(1)}c/path)" if mm else
+                           "balanced branch")
+        elif sev == "WARN" and "drift" in msg:
+            mm = _re.search(r"=\s*(\d+)c\s*=\s*(\d+) scanlines ([+-]\d+)c", msg)
+            if mm:
+                gotchas.append(f"loop {mm.group(1)}c = {mm.group(2)} scanlines {mm.group(3)}c "
+                               "-> CRTC address writes drift each row (soft window, tolerable)")
+            else:
+                gotchas.append("loop length not an exact scanline multiple -> cycle drift")
+    if any(sl.izy_pagecross for sl in an.src_lines):
+        gotchas.append("(zp),Y read in the loop may cross a page (+1c); fine for a "
+                       "soft-window rupture, not for cycle-exact RVI")
+    if not an.soft_window:
+        gotchas.append("per-scanline CRTC writes are cycle-exact -- keep the loop body "
+                       "timing exact (see per-line totals)")
+    if gotchas:
+        out.append("GOTCHA : " + gotchas[0])
+        out.extend("         " + g for g in gotchas[1:])
+    else:
+        out.append("GOTCHA : none -- timing is robust (stretch re-sync absorbs +/-1c)")
+    return out
+
+
 def _final_registers(reg_writes):
     """Last written value of each CRTC register, in cum order."""
     final = {}

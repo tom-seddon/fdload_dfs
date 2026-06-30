@@ -1167,7 +1167,7 @@ XPAGE_MARK_RE = re.compile(r"\s*\[xpage\][^\n]*")
 
 
 def rewrite(an, scanline, annotate_missing=False, add_running_totals=False,
-            note_page_cross=False, vann=None):
+            note_page_cross=False, vann=None, summary=None):
     """Return new full-file text with updated per-line and running comments.
 
     Rules (conservative - only touch numbers, never prose):
@@ -1303,10 +1303,37 @@ def rewrite(an, scanline, annotate_missing=False, add_running_totals=False,
             if bsl is not None:
                 add_insert(loop["lineno"] + 1, bsl.cum_after)             # after branch
 
+    # Effect summary header block at the top of the draw function (idempotent:
+    # an existing [effect-summary]..[/effect-summary] block is replaced).
+    drop = set()
+    SUMMARY_START = "[effect-summary]"
+    SUMMARY_END = "[/effect-summary]"
+    if summary:
+        s0 = an.func_range[0]
+        brace = None
+        for j in range(s0, min(s0 + 3, len(lines))):
+            if split_comment(lines[j])[0].strip() == "{":
+                brace = j
+                break
+        anchor = (brace + 1) if brace is not None else (s0 + 1)
+        if anchor < len(lines) and SUMMARY_START in lines[anchor]:
+            m = anchor
+            while m < len(lines):
+                drop.add(m)
+                if SUMMARY_END in lines[m]:
+                    break
+                m += 1
+        block = ["\t\\\\ " + SUMMARY_START]
+        block += ["\t\\\\ " + b for b in summary]
+        block.append("\t\\\\ " + SUMMARY_END)
+        inserts[anchor + 1] = block + inserts.get(anchor + 1, [])
+
     out = []
     for i, line in enumerate(lines):
         for t in inserts.get(i + 1, []):
             out.append(t)
+        if i in drop:
+            continue
         out.append(line)
     for t in inserts.get(len(lines) + 1, []):
         out.append(t)
@@ -1350,6 +1377,9 @@ def main():
                     help="insert a \\\\ <== Nc running total on blank lines after code blocks")
     ap.add_argument("--note-page-cross", action="store_true",
                     help="append a [xpage] note to (zp),Y reads that may cross a page")
+    ap.add_argument("--summary", action="store_true",
+                    help="insert a short effect-summary header block at the top of the "
+                         "draw function (components, setup/loop/fixup, gotchas)")
     args = ap.parse_args()
 
     cfg_path = Path(args.config)
@@ -1367,8 +1397,9 @@ def main():
     print(build_report(an))
 
     vann = {}
+    summary = None
     if cfg.get("vertical"):
-        from crtc_vertical import analyse_vertical
+        from crtc_vertical import analyse_vertical, build_effect_summary
         vF, vann, vS = analyse_vertical(an, cfg["vertical"])
         print("\n## Vertical (PAL frame) structure")
         for line in vS:
@@ -1376,11 +1407,17 @@ def main():
         print("\n## Vertical validation")
         for sev, msg in vF:
             print(f"  [{sev}] {msg}")
+        if args.summary:
+            summary = build_effect_summary(an, cfg["vertical"])
+            print("\n## Effect summary (header block)")
+            for line in summary:
+                print(f"  {line}")
 
     if args.write or args.out:
         newtext = rewrite(an, an.scanline, annotate_missing=args.annotate_missing,
                           add_running_totals=args.add_running_totals,
-                          note_page_cross=args.note_page_cross, vann=vann)
+                          note_page_cross=args.note_page_cross, vann=vann,
+                          summary=summary)
         target = Path(args.out) if args.out else src_path
         target.write_text(newtext)
         print(f"\n[written] {target}")

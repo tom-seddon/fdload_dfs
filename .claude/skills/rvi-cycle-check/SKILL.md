@@ -64,6 +64,16 @@ Write flags (all opt-in; default just updates existing numbers + adds `[vert]`):
   blank). Idempotent — wrap markers are preserved, never re-numbered or doubled.
 - `--note-page-cross` — append an `[xpage]` note to `(zp),Y` reads that may cross
   a page (see below).
+- `--summary` — insert a short (~5-line) **effect-summary header block** at the
+  top of the draw function, auto-derived from the analysis: the main components
+  (rupture-only vs + horizontal RVI, scanlines/row, rows, lines, PAL/vsync), a
+  one-line gloss of the SETUP / LOOP / FIXUP sections (which CRTC registers each
+  touches, loop trip count and per-iteration cost, any `JSR`s the loop calls),
+  and a GOTCHA line for things the reader must respect — balanced branches that
+  must stay cycle-aligned, soft-window cycle drift, `(zp),Y` page crossings, or
+  cycle-exact per-scanline writes. Delimited by `\\ [effect-summary]` …
+  `\\ [/effect-summary]` and replaced in place on re-runs (idempotent). Needs a
+  `vertical` config block.
 - `--file` overrides the source path in the config.
 
 ## Per-effect config
