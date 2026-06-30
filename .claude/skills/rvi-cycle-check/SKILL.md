@@ -86,6 +86,14 @@ Write flags (all opt-in; default just updates existing numbers + adds `[vert]`):
   that reference shared definitions from another file.
 - `page_align_macros` — names of macros equivalent to `ALIGN &100` (e.g.
   `["PAGE_ALIGN"]`), so labels after them are detected as page-aligned.
+- `subroutine_cycles` — map of `"<label>": <total cycles>` for `JSR <label>`
+  calls the analyser should charge at a fixed cost (the whole call: 6c JSR +
+  body + its RTS). Use for **calibrated / external** delay routines such as
+  `cycles_wait_128` (a 128c spin). Local straight-line subroutines that are
+  *not* listed are followed automatically and costed phase-accurately (their
+  stretched accesses depend on the entry parity), so you only list routines the
+  analyser can't see or shouldn't inline. A `JSR` to an unknown routine falls
+  back to the flat 6c instruction cost.
 - `register_constraints` — per-CRTC-register rules (see below).
 - `origin` — optional absolute address of the function; enables branch
   page-cross detection. Null → branch page-cross detection is disabled (reported).
@@ -181,6 +189,23 @@ scanning the source's `ORG <&100` region for ZP labels; add others via
   Override with `vertical.loop_iterations` if auto-detection fails.
 - **`{` / `}`** anonymous-block delimiters and `\{` / `\}` are zero-cost.
 - **Decimal zero-page operands** (e.g. `BIT 0` = `BIT zp` 3c, not `BIT abs` 4c).
+- **`JSR` into a subroutine** — charged as the whole call (6c JSR + body + RTS),
+  not a flat 6c. A configured `subroutine_cycles` entry gives a fixed total (for
+  calibrated/external spins like `cycles_wait_128` = 128c); otherwise a local
+  straight-line routine is **inline-walked** at its actual call-site phase, so
+  its stretched accesses are costed correctly. Those subroutine body lines also
+  get their own per-line `; Nc` annotations (corrected against any stale hand
+  comments) — at the phase of the real call site. If a routine is called from
+  two different phases its costs differ; the tool flags this and annotates using
+  the first call site. (A `\\`-prose summary like `\\ total = …c` inside the
+  routine is left untouched — check it by hand.) `RTS`-less / branching
+  subroutines are not inlined (fall back to flat 6c).
+- **Soft-window rupture loops** — when an effect has *no* `exact_completion`
+  register constraints (all `before_row_end`), a rupture loop whose length is
+  **not** an exact scanline multiple is reported as a per-iteration **drift WARN**
+  (e.g. plasma's 513c = 4 scanlines +1c → the CRTC address writes creep one cycle
+  per row), not a hard ERROR. For cycle-exact effects a non-multiple is still an
+  ERROR.
 
 ## Indexed-read page crossings
 
@@ -274,6 +299,12 @@ only to comment-free lines; the full breakdown is in the report.
 - **twister** (`just-rasters`, BeebAsm) — vertical rupture, entry at PAL line 0,
   shadow/main RAM toggle via `&FE34` (ACCCON, not stretched), **2×-unrolled loop**
   with a `BEQ done / JMP here` tail (127×2 = 254 lines). Frame 312, vsync 280.
+- **plasma** (`just-rasters`, BeebAsm) — vertical rupture with **multi-scanline
+  rows** (R9=3 → 4 scanlines/row, R4=0), so each of the 63 loop iterations is a
+  whole char row (4 PAL lines). Loop body calls `JSR plasma_set_charrow` (inlined,
+  phase-accurate) and `JSR cycles_wait_128` ×3 (configured 128c). Frame 312, vsync
+  280. Surfaces a **+1c/iteration soft-window drift** (loop = 513c vs 512c) because
+  `plasma_set_charrow` truly costs 49c (author's comments assumed 42–46c).
 
 ## Known limitations / not yet done
 

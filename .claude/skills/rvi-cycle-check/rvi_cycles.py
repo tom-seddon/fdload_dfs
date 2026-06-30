@@ -326,11 +326,21 @@ class Analyser:
         self.entry_phase = cfg.get("entry_phase", 0)
         self.scanline = cfg.get("scanline_cycles", 128)
         self.reg_constraints = {int(k): v for k, v in cfg.get("register_constraints", {}).items()}
+        # An effect is "soft-window" if NONE of its CRTC register constraints
+        # demand cycle-exact completion (all are before_row_end). For such
+        # vertical-rupture effects the rupture loop only needs to be ~N scanlines;
+        # a near-miss is per-iteration drift (WARN), not a hard timing ERROR.
+        self.soft_window = not any("exact_completion" in c
+                                   for c in self.reg_constraints.values())
         self.func = cfg.get("function", "fx_draw_function")
         self.end_label = cfg.get("end_label")
         self.origin = cfg.get("origin", None)
         self.page_aligned = set(cfg.get("page_aligned_symbols", []))
         self.page_align_macros = set(cfg.get("page_align_macros", []))
+        # JSR <name> total cost (the 6c JSR + body + its RTS) for calibrated /
+        # external routines we don't want to (or can't) inline-walk. Local
+        # straight-line subroutines are followed automatically (phase-accurate).
+        self.subroutine_cycles = dict(cfg.get("subroutine_cycles", {}))
 
         self.findings = []          # global findings
         self.reg_writes = []        # recorded CRTC value writes (reg,val,cum,lineno)
@@ -338,10 +348,34 @@ class Analyser:
         self.label_pc = {}          # label -> pc offset
         self.loops = []             # backward-branch loops: label,label_cum,iter_len,lineno
         self.total_cum = None       # cumulative cycles at end of function (RTS)
+        self.sub_lines = {}         # lineno -> SrcLine for inlined subroutine bodies
+        self.sub_phase_conflict = set()  # subroutine labels walked at >1 phase
         self._scan_top_level()
 
     def add(self, sev, msg):
         self.findings.append((sev, msg))
+
+    def _report_loop(self, lbl, iter_len, lineno):
+        """Record a backward-branch loop and judge its length. A multiple of the
+        scanline is OK. A near-miss is a hard ERROR for cycle-exact effects, but
+        only a drift WARNING for soft-window vertical-rupture effects."""
+        self.loops.append({"label": lbl, "label_cum": self.label_cum[lbl],
+                           "iter_len": iter_len, "lineno": lineno})
+        rem = iter_len % self.scanline
+        if rem == 0:
+            self.add("OK", f"loop to .{lbl} iteration = {iter_len}c "
+                     f"({iter_len // self.scanline} scanline(s))")
+            return
+        drift = rem if rem <= self.scanline // 2 else rem - self.scanline
+        nearest = round(iter_len / self.scanline)
+        if self.soft_window:
+            self.add("WARN", f"loop to .{lbl} (line {lineno}) iteration = {iter_len}c "
+                     f"= {nearest} scanlines {drift:+d}c ({drift:+d}c/iteration drift). "
+                     "Soft-window rupture: tolerable, but the CRTC address writes creep "
+                     "relative to the row each iteration (cumulative drift over the loop).")
+        else:
+            self.add("ERROR", f"loop to .{lbl} (line {lineno}) iteration = {iter_len}c, "
+                     f"not a multiple of {self.scanline}c")
 
     def _scan_top_level(self):
         """Collect ZP symbols (ORG <0x100 ... GUARD), page-aligned labels
@@ -558,14 +592,7 @@ class Analyser:
                     sl.cum_after = cum
                     if loop_lbl in self.label_cum:
                         iter_len = cum - self.label_cum[loop_lbl]
-                        if iter_len % self.scanline != 0:
-                            self.add("ERROR", f"loop to .{loop_lbl} (line {sl.lineno}) "
-                                     f"iteration = {iter_len}c, not a multiple of {self.scanline}c")
-                        else:
-                            self.add("OK", f"loop to .{loop_lbl} iteration = {iter_len}c "
-                                     f"({iter_len // self.scanline} scanline(s))")
-                        self.loops.append({"label": loop_lbl, "label_cum": self.label_cum[loop_lbl],
-                                           "iter_len": iter_len, "lineno": sl.lineno})
+                        self._report_loop(loop_lbl, iter_len, sl.lineno)
                     pending_adjust = -2   # exit: skip JMP (-3), cond taken vs not-taken (+1)
                     idx += 1
                     continue
@@ -625,6 +652,21 @@ class Analyser:
                     cum += pending_adjust
                     pending_adjust = 0
 
+                # JSR to a known/local routine: charge the whole call (JSR + body
+                # + RTS), following local straight-line subroutines at the current
+                # cum so their stretched accesses are phase-accurate. Unknown
+                # routines fall through to the flat 6c default below.
+                if mnem == "jsr":
+                    msub = re.match(r"^([A-Za-z_]\w*)", operand)
+                    cc = self._call_cost(msub.group(1), cum) if msub else None
+                    if cc is not None:
+                        cost, note = cc
+                        sl.has_instr = True
+                        cum += cost
+                        pc += 3
+                        sl.line_cost += cost
+                        continue
+
                 try:
                     mode, base, addr = classify(mnem, operand, self.symbols, self.zp_symbols)
                 except CostError as e:
@@ -650,14 +692,7 @@ class Analyser:
                     lbl = tgt.group(1) if tgt else None
                     if lbl in self.label_cum and self.label_cum[lbl] <= cum:
                         iter_len = cum - self.label_cum[lbl]
-                        if iter_len % self.scanline != 0:
-                            self.add("ERROR", f"loop to .{lbl} (line {sl.lineno}) "
-                                     f"iteration = {iter_len}c, not a multiple of {self.scanline}c")
-                        else:
-                            self.add("OK", f"loop to .{lbl} iteration = {iter_len}c "
-                                     f"({iter_len // self.scanline} scanline(s))")
-                        self.loops.append({"label": lbl, "label_cum": self.label_cum[lbl],
-                                           "iter_len": iter_len, "lineno": sl.lineno})
+                        self._report_loop(lbl, iter_len, sl.lineno)
                         pending_adjust = -1   # fall-through is not-taken (deferred)
                     elif lbl is not None:
                         sl.flags.append(("WARN", f"forward branch to .{lbl} counted as "
@@ -689,6 +724,129 @@ class Analyser:
             if re.match(r"^\.%s\b" % re.escape(name), self.lines[i].strip()):
                 return i
         return None
+
+    def _call_cost(self, label, cum, depth=0):
+        """Total cost of `JSR label`: the 6c JSR + the subroutine body + its RTS.
+
+        Resolution order: a configured fixed cost (subroutine_cycles) wins;
+        otherwise the local label is inline-walked from `cum+6` so stretched
+        accesses inside it are phase-accurate. Returns (cost, note) or None if
+        the routine can't be resolved (caller then uses the flat 6c default)."""
+        if label in self.subroutine_cycles:
+            c = self.subroutine_cycles[label]
+            return c, f"call {label} ({c}c, configured)"
+        li = self._find_label_line(label, 0, len(self.lines))
+        if li is None:
+            return None
+        body, ok = self._walk_subroutine(li + 1, cum + 6, depth, label)
+        if not ok:
+            return None
+        return 6 + body, f"call {label} ({6 + body}c, inlined)"
+
+    def _record_sub_line(self, idx, line_cost, odd_stretch, has_instr, label):
+        """Record per-line cost for an inlined subroutine body line (1-based idx+1),
+        so rewrite() can annotate it. If the same line is reached at a different
+        cost (subroutine called from two phases), flag a conflict and keep the
+        first recording."""
+        ln = idx + 1
+        prev = self.sub_lines.get(ln)
+        if prev is None:
+            sl = SrcLine(ln, self.lines[idx])
+            sl.line_cost = line_cost
+            sl.odd_stretch = odd_stretch
+            sl.has_instr = has_instr
+            self.sub_lines[ln] = sl
+        elif prev.line_cost != line_cost or prev.odd_stretch != odd_stretch:
+            self.sub_phase_conflict.add(label)
+
+    def _walk_subroutine(self, start_idx, cum, depth=0, label=None):
+        """Walk a straight-line subroutine body, summing cycle cost (incl. the
+        terminating RTS) from starting cum `cum`. Handles FOR/NEXT replay, stretch
+        phase, and nested JSRs (recursively). Records per-line costs (for
+        annotation) keyed by source line. Returns (cost, ok); ok=False if the
+        body contains control flow we don't model (branch/JMP) or is malformed."""
+        if depth > 6:
+            return 0, False
+        total = 0
+        for_stack = []
+        idx = start_idx
+        guard = 0
+        while idx < len(self.lines):
+            guard += 1
+            if guard > 5000:
+                return total, False
+            code = split_comment(self.lines[idx])[0]
+            stripped = code.strip()
+            mFor = re.match(r"(?i)^FOR\s+\w+\s*,(.+)$", stripped)
+            if mFor and ":" not in code:
+                for_stack.append([idx + 1, self._for_iter_count(mFor.group(1))])
+                idx += 1
+                continue
+            if re.match(r"(?i)^NEXT\b", stripped) and ":" not in code and for_stack:
+                fr = for_stack[-1]
+                fr[1] -= 1
+                if fr[1] > 0:
+                    idx = fr[0]
+                else:
+                    for_stack.pop()
+                    idx += 1
+                continue
+            line_cost = 0
+            line_odd = False
+            line_has_instr = False
+            done = None             # set to (total, ok) when an RTS/control-flow ends the body
+            for st in split_statements(code):
+                st = st.strip()
+                if st == "" or st in ("{", "}", "\\{", "\\}"):
+                    continue
+                if st.startswith("."):
+                    ml = re.match(r"^\.[A-Za-z_]\w*", st)
+                    st = st[ml.end():].strip() if ml else ""
+                    if st == "":
+                        continue
+                if re.match(r"(?i)^(IF|ELIF|ELSE|ENDIF|ERROR|PRINT|ALIGN|EQU[BWDS]"
+                            r"|SKIP|MACRO|ENDMACRO|FOR|NEXT|ORG|GUARD)\b", st):
+                    continue
+                mIns = re.match(r"^([A-Za-z]{3})\b(.*)$", st)
+                if not mIns:
+                    return total, False
+                mnem = mIns.group(1).lower()
+                operand = mIns.group(2).strip()
+                if mnem in ("rts", "rti"):
+                    line_cost += 6
+                    line_has_instr = True
+                    total += 6
+                    done = (total, True)
+                    break
+                if mnem in BRANCHES or mnem == "jmp":
+                    return total, False
+                if mnem == "jsr":
+                    ms = re.match(r"^([A-Za-z_]\w*)", operand)
+                    sc = self._call_cost(ms.group(1), cum, depth + 1) if ms else None
+                    if sc is None:
+                        return total, False
+                    line_cost += sc[0]
+                    line_has_instr = True
+                    total += sc[0]
+                    cum += sc[0]
+                    continue
+                try:
+                    mode, base, addr = classify(mnem, operand, self.symbols, self.zp_symbols)
+                except CostError:
+                    return total, False
+                cost, note, _ = self._cost_with_stretch(mnem, mode, base, addr, operand, cum, 0)
+                line_cost += cost
+                line_has_instr = True
+                if note.startswith("stretched(+1)"):
+                    line_odd = True
+                total += cost
+                cum += cost
+            if line_has_instr:
+                self._record_sub_line(idx, line_cost, line_odd, True, label)
+            if done is not None:
+                return done
+            idx += 1
+        return total, False
 
     def _for_iter_count(self, rest):
         """Iteration count of `FOR var,a,b[,c]` from the part after the var."""
@@ -985,6 +1143,19 @@ def build_report(an):
         cyc = rw["cum"] % an.scanline
         valstr = f"={rw['val']}" if rw["val"] is not None else ""
         out.append(f"  line {rw['lineno']:>4}: R{reg}{valstr} completes at {cyc}c")
+    if an.sub_lines:
+        out.append("")
+        out.append("## Inlined subroutine per-line costs (phase = actual call site)")
+        for ln in sorted(an.sub_lines):
+            sl = an.sub_lines[ln]
+            ann = existing_perline(sl.comment)
+            mark = "  [odd stretch +1]" if sl.odd_stretch else ""
+            if ann is not None and ann != sl.line_cost:
+                mark += f" <-- annotated {ann}c, true {sl.line_cost}c"
+            out.append(f"  line {ln:>4}:  {sl.line_cost:>3}c  {sl.code.strip()}{mark}")
+        if an.sub_phase_conflict:
+            out.append(f"  NOTE: {', '.join(sorted(an.sub_phase_conflict))} called at "
+                       ">1 phase; per-line costs vary by call site (annotation uses the first).")
     return "\n".join(out)
 
 
@@ -1005,7 +1176,11 @@ def rewrite(an, scanline, annotate_missing=False, add_running_totals=False,
     Prose comments without a number are left untouched.
     """
     lines = list(an.lines)
+    # function body lines plus any inlined-subroutine body lines (the latter get
+    # per-line `; Nc` cost annotations too, but no running totals).
     by_lineno = {sl.lineno: sl for sl in an.src_lines}
+    for ln, sl in an.sub_lines.items():
+        by_lineno.setdefault(ln, sl)
     for lineno, sl in by_lineno.items():
         raw = lines[lineno - 1]
         code, comment, idx = split_comment(raw)
@@ -1053,14 +1228,24 @@ def rewrite(an, scanline, annotate_missing=False, add_running_totals=False,
     def already_marker(lineno):
         return 1 <= lineno <= len(lines) and RUNNING_RE.search(split_comment(lines[lineno - 1])[1])
 
+    wrap_lines = set()
+
     def add_insert(lineno, cum, force_boundary=False):
         if already_marker(lineno):
             return                       # idempotent: a marker is already here
-        v = render_running(scanline, scanline) if force_boundary else render_running(cum, scanline)
-        inserts.setdefault(lineno, [])
-        text = "\t\\\\ <== " + v
-        if text not in inserts[lineno]:
-            inserts[lineno].append(text)
+        lst = inserts.setdefault(lineno, [])
+        if force_boundary:
+            # a scanline-wrap marker supersedes a plain block-end total at the
+            # same spot (it carries the same info plus the boundary crossing).
+            wrap_lines.add(lineno)
+            lst[:] = [t for t in lst if "/" in t]   # drop plain block-end totals
+            text = "\t\\\\ <== " + render_running(scanline, scanline)
+        else:
+            if lineno in wrap_lines:
+                return                   # a wrap marker already covers this line
+            text = "\t\\\\ <== " + render_running(cum, scanline)
+        if text not in lst:
+            lst.append(text)
 
     if add_running_totals:
         by_lineno_sl = {sl.lineno: sl for sl in an.src_lines}
