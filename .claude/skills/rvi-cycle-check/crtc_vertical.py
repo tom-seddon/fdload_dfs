@@ -298,11 +298,12 @@ def analyse_vertical(an, vcfg):
         S.append(f"loop R4              : {loop_R4} (vertical total-1 during rupture)")
 
     # 5. visible lines (estimate). Displayed rows come from more than the loop:
-    #    * The SETUP phase displays one row too. If the draw routine does NOT set
-    #      R12/R13 in setup, that row shows the address latched by the previous
-    #      *tick* (update) -> +1 displayed row the loop math misses. (If the draw
-    #      sets R12/R13 in setup, e.g. kefrens/twister, the setup row is its own
-    #      and already accounted, so no extra.)
+    #    * The SETUP frame displays one row too. These rupture effects are
+    #      pipelined -- the draw writes each row's R12/R13 one frame AHEAD (so a
+    #      setup R12/R13 write relatches only for the loop's first row). The setup
+    #      frame therefore shows the address latched by the previous *tick*
+    #      (update fn always primes R12/R13) -> +1 displayed row the loop math
+    #      misses. This holds whether or not the draw also writes R12/R13 in setup.
     #    * The FIXUP / tail relatch can add yet another displayed row depending on
     #      exactly how it rewrites R12/R13 -- not determinable from the draw alone.
     loop_R6 = None
@@ -312,19 +313,17 @@ def analyse_vertical(an, vcfg):
     visible = loop_lines if (loop_R6 and loop_R6 >= 1) else 0
     tail_visible = (R6 or 0) * (R9 + 1)
 
-    addr_in_setup = any(rw["reg"] in (12, 13) and rw["cum"] <= loop_start_cum
-                        for rw in an.reg_writes)
     setup_R6 = None
     for rw in sorted(an.reg_writes, key=lambda r: r["cum"]):
         if rw["reg"] == 6 and rw["cum"] <= loop_start_cum:
             setup_R6 = rw["val"]
     row_lines = R9 + 1
-    setup_visible = row_lines if (not addr_in_setup and setup_R6 and setup_R6 >= 1) else 0
+    setup_visible = row_lines if (setup_R6 and setup_R6 >= 1) else 0
     total_visible = setup_visible + visible + tail_visible
 
     parts = []
     if setup_visible:
-        parts.append(f"setup {setup_visible} (1 row, addr from tick)")
+        parts.append(f"setup {setup_visible} (1 row from tick)")
     parts.append(f"loop {visible} @ R6={loop_R6}")
     parts.append(f"tail {tail_visible} @ R6={R6}")
     caveat = f"; fixup relatch may add +{row_lines} (1 row)" if setup_visible else ""

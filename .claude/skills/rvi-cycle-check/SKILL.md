@@ -276,17 +276,17 @@ rupture sanity (R7 parked / loop R4 < R7); visible-line estimate (R6); **stale
 computed PAL line — e.g. a comment written for a different `SHORTEN_BY_ROWS`).
 
 **Visible-line estimate — mind the SETUP and FIXUP rows.** Displayed rows are not
-just the loop. The **SETUP phase displays one row too**: if the draw routine does
-*not* write R12/R13 in setup, that row shows the address latched by the previous
-**tick** (the update fn) → **+1 displayed row** the loop math misses (the tool
-adds it, labelled "addr from tick"). If the draw *does* set R12/R13 in setup
-(e.g. kefrens/twister), that row is its own and already counted, so no extra. The
-**fixup/tail relatch can add yet another displayed row** depending on exactly how
-it rewrites R12/R13 — not determinable from the draw routine alone, so the
-estimate flags it as a possible `+1 row` rather than asserting it. (R12/R13
-writes made inside an inlined subroutine are not yet tracked in `reg_writes`, so
-"address set in the loop" reads as *not* in setup — which is the correct
-conclusion for the SETUP-row question.)
+just the loop. These rupture effects are **pipelined**: the draw writes each
+row's R12/R13 one frame *ahead* (a setup R12/R13 write only relatches for the
+loop's first row). So the **SETUP frame displays one extra row** showing the
+address latched by the previous **tick** (the update fn always primes R12/R13) →
+**+1 displayed row** the loop math misses. This holds whether or not the draw
+*also* writes R12/R13 in setup — so the tool now adds it for every such effect
+(labelled "1 row from tick"). The **fixup/tail relatch can add yet another
+displayed row** depending on exactly how it rewrites R12/R13 — not determinable
+from the draw routine alone, so the estimate flags it as a possible `+1 row`
+rather than asserting it. (e.g. kefrens/twister 256, parallax 256, plasma 260,
+each possibly +1 row more from the fixup.)
 
 **PAL-line annotations.** On `--write` the rewriter adds idempotent `[vert]`
 markers: the function-entry and loop-label lines get a `\\ [vert] ...` comment,
@@ -331,6 +331,13 @@ only to comment-free lines; the full breakdown is in the report.
   phase-accurate) and `JSR cycles_wait_128` ×3 (configured 128c). Frame 312, vsync
   280. Surfaces a **+1c/iteration soft-window drift** (loop = 513c vs 512c) because
   `plasma_set_charrow` truly costs 49c (author's comments assumed 42–46c).
+- **parallax** (`just-rasters`, BeebAsm) — vertical rupture, 4 scanlines/row ×
+  62 rows, **shadow/main-RAM parallax**: each loop row rewrites R12/R13 *and*
+  toggles the video page via `&FE34` (ACCCON bit 2 — **not** stretched, flat 4c).
+  Loop calls `JSR cycles_wait_128` ×3. The three `vram_table_*` sub-tables are
+  64 bytes each packed after one `PAGE_ALIGN`, so all fit in one page (Y≤63 never
+  crosses) — asserted via `page_aligned_symbols`. Frame 312, vsync 280; same
+  +1c/iteration soft-window drift (loop = 513c).
 
 ## Known limitations / not yet done
 
