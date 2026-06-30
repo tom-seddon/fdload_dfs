@@ -275,6 +275,19 @@ rupture sanity (R7 parked / loop R4 < R7); visible-line estimate (R6); **stale
 `start of scanline N` prose** (warns when a hand comment disagrees with the
 computed PAL line — e.g. a comment written for a different `SHORTEN_BY_ROWS`).
 
+**Visible-line estimate — mind the SETUP and FIXUP rows.** Displayed rows are not
+just the loop. The **SETUP phase displays one row too**: if the draw routine does
+*not* write R12/R13 in setup, that row shows the address latched by the previous
+**tick** (the update fn) → **+1 displayed row** the loop math misses (the tool
+adds it, labelled "addr from tick"). If the draw *does* set R12/R13 in setup
+(e.g. kefrens/twister), that row is its own and already counted, so no extra. The
+**fixup/tail relatch can add yet another displayed row** depending on exactly how
+it rewrites R12/R13 — not determinable from the draw routine alone, so the
+estimate flags it as a possible `+1 row` rather than asserting it. (R12/R13
+writes made inside an inlined subroutine are not yet tracked in `reg_writes`, so
+"address set in the loop" reads as *not* in setup — which is the correct
+conclusion for the SETUP-row question.)
+
 **PAL-line annotations.** On `--write` the rewriter adds idempotent `[vert]`
 markers: the function-entry and loop-label lines get a `\\ [vert] ...` comment,
 and each new PAL scanline start in the setup/fixup is tagged on its `<== ...0c`
