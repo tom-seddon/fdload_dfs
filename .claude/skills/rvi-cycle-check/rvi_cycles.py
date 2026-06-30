@@ -726,6 +726,15 @@ class Analyser:
                 return i
         return None
 
+    def _find_sub_rts(self, start_idx):
+        """Index of the first RTS/RTI statement at/after start_idx (the end of a
+        subroutine body). Best-effort, bounded."""
+        for i in range(start_idx, min(start_idx + 500, len(self.lines))):
+            for st in split_statements(split_comment(self.lines[i])[0]):
+                if re.match(r"(?i)^(rts|rti)\b", st.strip()):
+                    return i
+        return None
+
     def _call_cost(self, label, cum, depth=0):
         """Total cost of `JSR label`: the 6c JSR + the subroutine body + its RTS.
 
@@ -735,6 +744,16 @@ class Analyser:
         the routine can't be resolved (caller then uses the flat 6c default)."""
         if label in self.subroutine_cycles:
             c = self.subroutine_cycles[label]
+            # record a total for a same-file configured sub so its end-of-routine
+            # total comment gets corrected too (the body isn't inline-walked, so
+            # no per-line annotations -- e.g. a balanced-branch sub like
+            # copper_accumulate that the inliner can't follow).
+            if label not in self.sub_totals:
+                li = self._find_label_line(label, 0, len(self.lines))
+                if li is not None:
+                    rts_idx = self._find_sub_rts(li + 1)
+                    if rts_idx is not None:
+                        self.sub_totals[label] = {"body": c - 6, "rts_idx": rts_idx}
             return c, f"call {label} ({c}c, configured)"
         li = self._find_label_line(label, 0, len(self.lines))
         if li is None:
@@ -1167,7 +1186,7 @@ XPAGE_MARK_RE = re.compile(r"\s*\[xpage\][^\n]*")
 
 
 def rewrite(an, scanline, annotate_missing=False, add_running_totals=False,
-            note_page_cross=False, vann=None, summary=None):
+            note_page_cross=False, vann=None, summary=None, vbound=None):
     """Return new full-file text with updated per-line and running comments.
 
     Rules (conservative - only touch numbers, never prose):
@@ -1236,8 +1255,12 @@ def rewrite(an, scanline, annotate_missing=False, add_running_totals=False,
         if target is None:
             target = rts_idx
         code, comment, _ = split_comment(lines[target])
-        if re.search(r"(?i)\btotal\b", comment):
-            # replace an existing total comment (idempotent re-write)
+        ctext = re.sub(r"^[\\;\s]+", "", comment).rstrip()
+        is_total = (bool(re.search(r"(?i)\btotal\b", ctext))
+                    or bool(re.fullmatch(r"[\d\s+\-*/()]*=\s*\d+\s*[cC]", ctext)))
+        if is_total:
+            # replace an existing total comment (incl. a pure `a + b = Nc` form);
+            # idempotent on re-write.
             lines[target] = code.rstrip() + "\t\\\\ " + total_txt
         elif comment.strip() == "":
             lines[target] = code.rstrip() + "\t\\\\ " + total_txt
@@ -1257,10 +1280,24 @@ def rewrite(an, scanline, annotate_missing=False, add_running_totals=False,
 
     wrap_lines = set()
 
+    def boundary_pal(lineno, cum):
+        """PAL line for a scanline-boundary marker inserted before source `lineno`,
+        or None if inside the loop region (covered by the loop-label range) or no
+        vertical data. Mirrors analyse_vertical's boundary math so an INSERTED
+        marker is tagged identically to a pre-existing one (idempotent first pass)."""
+        if not vbound or cum is None:
+            return None
+        lll, bl = vbound["loop_label_line"], vbound["branch_line"]
+        if lll is not None and lll <= lineno <= bl:
+            return None
+        real = cum + (vbound["extra"] if lineno > bl else 0)
+        return real // vbound["scan"] + vbound["entry_pal"]
+
     def add_insert(lineno, cum, force_boundary=False):
         if already_marker(lineno):
             return                       # idempotent: a marker is already here
         lst = inserts.setdefault(lineno, [])
+        is_boundary = force_boundary or (cum is not None and cum % scanline == 0)
         if force_boundary:
             # a scanline-wrap marker supersedes a plain block-end total at the
             # same spot (it carries the same info plus the boundary crossing).
@@ -1271,6 +1308,10 @@ def rewrite(an, scanline, annotate_missing=False, add_running_totals=False,
             if lineno in wrap_lines:
                 return                   # a wrap marker already covers this line
             text = "\t\\\\ <== " + render_running(cum, scanline)
+        if is_boundary:
+            pal = boundary_pal(lineno, cum)
+            if pal is not None:
+                text += "  [vert] PAL line %d" % pal
         if text not in lst:
             lst.append(text)
 
@@ -1397,10 +1438,11 @@ def main():
     print(build_report(an))
 
     vann = {}
+    vbound = {}
     summary = None
     if cfg.get("vertical"):
         from crtc_vertical import analyse_vertical, build_effect_summary
-        vF, vann, vS = analyse_vertical(an, cfg["vertical"])
+        vF, vann, vS, vbound = analyse_vertical(an, cfg["vertical"])
         print("\n## Vertical (PAL frame) structure")
         for line in vS:
             print(f"  {line}")
@@ -1417,7 +1459,7 @@ def main():
         newtext = rewrite(an, an.scanline, annotate_missing=args.annotate_missing,
                           add_running_totals=args.add_running_totals,
                           note_page_cross=args.note_page_cross, vann=vann,
-                          summary=summary)
+                          summary=summary, vbound=vbound)
         target = Path(args.out) if args.out else src_path
         target.write_text(newtext)
         print(f"\n[written] {target}")

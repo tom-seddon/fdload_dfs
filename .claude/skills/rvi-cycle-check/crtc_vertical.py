@@ -78,7 +78,19 @@ def build_effect_summary(an, vcfg):
         if rw["reg"] is not None:
             final[rw["reg"]] = rw["val"]
 
+    # palette "copper": repeated writes to the ULA palette (&FE20-3F) per row,
+    # in the function body or any inlined subroutine.
+    s, e = an.func_range
+    pal_writes = 0
+    scan_src = [an.lines[i] for i in range(s, e)] + [sl.code for sl in an.sub_lines.values()]
+    for ln in scan_src:
+        for st in split_statements(split_comment(ln)[0]):
+            if _re.search(r"(?i)\bst[az]\s+&fe2[0-9a-f]\b", st):
+                pal_writes += 1
+
     kind = "Vertical Rupture" if an.soft_window else "Vertical Rupture + horizontal RVI"
+    if pal_writes >= 4:
+        kind += f" + per-row ULA palette ({pal_writes}x &FE2x copper)"
     rvi = "no per-scanline CRTC writes" if an.soft_window else "per-scanline R0 (cycle-exact)"
     vsync = vcfg.get("target_vsync_pal_line")
     vtxt = f", vsync PAL {vsync}" if vsync is not None else ""
@@ -88,7 +100,6 @@ def build_effect_summary(an, vcfg):
     fixup_lines = fixup_cum / scan
 
     # JSR calls inside the loop body (for the LOOP gloss)
-    s, e = an.func_range
     lbl_line = an._find_label_line(loop["label"], s, e)
     jsrs = []
     if lbl_line is not None:
@@ -165,14 +176,18 @@ def _first_unreachable_r7(reg_writes):
 
 
 def analyse_vertical(an, vcfg):
-    """Return (findings, annotations, summary_lines).
+    """Return (findings, annotations, summary_lines, vbound).
 
     findings: list of (severity, message)
     annotations: dict lineno -> PAL marker comment string (no leading marker)
+    vbound: data the rewriter needs to tag INSERTED scanline-boundary markers with
+            the same `[vert] PAL line N` note used for pre-existing markers (so the
+            first --write pass is already idempotent).
     """
     F = []          # findings
     ann = {}        # lineno -> "PAL line N" style note
     S = []          # summary lines
+    vbound = {}     # {entry_pal, scan, loop_label_line, branch_line, extra}
 
     scan = an.scanline
     frame_lines = vcfg.get("frame_lines", 312)
@@ -181,7 +196,7 @@ def analyse_vertical(an, vcfg):
     if not an.loops:
         F.append(("WARN", "no rupture loop detected; vertical check assumes a "
                   "setup + loop + fixup structure"))
-        return F, ann, S
+        return F, ann, S, vbound
     loop = max(an.loops, key=lambda L: L["iter_len"])
     iter_len = loop["iter_len"]
     loop_lines_each = iter_len // scan
@@ -194,7 +209,7 @@ def analyse_vertical(an, vcfg):
     if trips is None:
         F.append(("ASK", "could not determine loop trip count; set "
                   "vertical.loop_iterations in the config"))
-        return F, ann, S
+        return F, ann, S, vbound
 
     # --- line accounting -----------------------------------------------------
     loop_start_cum = loop["label_cum"] - an.entry_phase
@@ -227,7 +242,7 @@ def analyse_vertical(an, vcfg):
     if R4 is None or R9 is None or R7 is None:
         F.append(("WARN", "final R4/R9/R7 not all set in the routine; cannot model "
                   "the tail frame"))
-        return F, ann, S
+        return F, ann, S, vbound
 
     tail_lines = (R4 + 1) * (R9 + 1) + R5
     S.append(f"tail normal frame    : (R4+1)*(R9+1)+R5 = ({R4}+1)*({R9}+1)+{R5} = {tail_lines} line(s)")
@@ -361,6 +376,10 @@ def analyse_vertical(an, vcfg):
     # by the loop-range annotation above and skipped here.
     branch_line = loop["lineno"]
     extra = (trips - 1) * iter_len
+    # Same data the rewriter uses to tag INSERTED boundary markers identically.
+    vbound.update(entry_pal=entry_pal, scan=scan,
+                  loop_label_line=loop_label_line, branch_line=branch_line,
+                  extra=extra)
     pal_points = {start + 1: entry_pal, loop_label_line: loop_first}
     for sl in an.src_lines:
         if loop_label_line <= sl.lineno <= branch_line:
@@ -388,4 +407,4 @@ def analyse_vertical(an, vcfg):
         if claimed != computed:
             F.append(("WARN", f"stale comment (line {sl.lineno}): 'scanline {claimed}' "
                       f"but the computed PAL line here is {computed}"))
-    return F, ann, S
+    return F, ann, S, vbound

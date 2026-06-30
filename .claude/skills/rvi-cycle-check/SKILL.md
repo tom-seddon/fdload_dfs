@@ -208,11 +208,15 @@ scanning the source's `ORG <&100` region for ZP labels; add others via
   comments) — at the phase of the real call site — and a corrected **total
   comment** on the routine's closing `}` (or RTS line): `\\ total = <body>c body
   + 6c JSR = <call>c`, the full call cost matching what the caller's `JSR` line
-  shows (convention as in `cycles_wait_128`'s `= 128c`). An existing `total`
-  comment is replaced in place (idempotent). If a routine is called from two
-  different phases its costs differ; the tool flags this and annotates using the
-  first call site. `RTS`-less / branching subroutines are not inlined (fall back
-  to flat 6c).
+  shows (convention as in `cycles_wait_128`'s `= 128c`). An existing total comment
+  is replaced in place — both the `total = …` form and a bare arithmetic
+  `a + b = Nc` form (idempotent). If a routine is called from two different phases
+  its costs differ; the tool flags this and annotates the body / total using the
+  first call site (e.g. copper_set_charrow: 179c setup vs 180c loop). **Branching
+  subroutines are not inlined** (the walker bails on any branch) — give them a
+  fixed `subroutine_cycles` cost instead; the tool still corrects their end-total
+  comment but cannot re-annotate their body per-line (e.g. copper_accumulate's
+  balanced branch → configured 38c). `RTS`-less subroutines also fall back to 6c.
 - **Soft-window rupture loops** — when an effect has *no* `exact_completion`
   register constraints (all `before_row_end`), a rupture loop whose length is
   **not** an exact scanline multiple is reported as a per-iteration **drift WARN**
@@ -338,6 +342,14 @@ only to comment-free lines; the full breakdown is in the report.
   64 bytes each packed after one `PAGE_ALIGN`, so all fit in one page (Y≤63 never
   crosses) — asserted via `page_aligned_symbols`. Frame 312, vsync 280; same
   +1c/iteration soft-window drift (loop = 513c).
+- **copper** (`just-rasters`, BeebAsm) — vertical rupture + **per-row ULA palette
+  copper** (16× `STA &FE21` per row — `&FE20–3F`, **not** stretched, flat 4c/8c).
+  Two same-file subs: `copper_set_charrow` (inlined; the author's `172c` is really
+  **179c**/setup, **180c**/loop — it's called at two phases, flagged) and
+  `copper_accumulate` (a **balanced branch** the inliner can't follow → configured
+  38c; the author's `36c` is 2c low). Setup lands *exactly* on 512c, which first
+  exposed the inserted-boundary-marker `[vert]` idempotence case (now fixed).
+  Frame 312, vsync 280, +1c/iteration drift.
 
 ## Known limitations / not yet done
 
