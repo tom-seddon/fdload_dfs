@@ -7,8 +7,7 @@
   "page_align_macros": ["PAGE_ALIGN"],
   "page_aligned_symbols": [],
   "subroutine_cycles": {
-    "cycles_wait_128": 128,
-    "copper_accumulate": 38
+    "cycles_wait_128": 128
   },
   "symbols": {
     "screen_base_addr": 12288,

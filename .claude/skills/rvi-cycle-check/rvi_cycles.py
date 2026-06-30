@@ -815,6 +815,7 @@ class Analyser:
             line_odd = False
             line_has_instr = False
             done = None             # set to (total, ok) when an RTS/control-flow ends the body
+            jump_to = None          # set to a merge index after a balanced branch region
             for st in split_statements(code):
                 st = st.strip()
                 if st == "" or st in ("{", "}", "\\{", "\\}"):
@@ -840,8 +841,26 @@ class Analyser:
                         self.sub_totals[label] = {"body": total, "rts_idx": idx}
                     done = (total, True)
                     break
-                if mnem in BRANCHES or mnem == "jmp":
-                    return total, False
+                if mnem == "jmp" or mnem == "bra":
+                    return total, False        # unconditional jump: not straight-line
+                if mnem in BRANCHES:
+                    # a conditional branch: try to resolve a balanced if/else region
+                    # (both paths reach a common merge at equal cost), so the sub
+                    # has a single deterministic cost we can inline. Only when the
+                    # branch starts its own line (clean region boundary).
+                    if line_cost != 0:
+                        return total, False
+                    btgt = re.match(r"^([A-Za-z_]\w*)", operand)
+                    region = self._balanced_region(idx, btgt.group(1), cum) if btgt else None
+                    if not region or region[0] != "ok":
+                        return total, False    # unbalanced / unrecognised -> can't inline
+                    _, region_cost, merge_idx, recs = region
+                    for (rli, rlc, rlo) in recs:
+                        self._record_sub_line(rli, rlc, rlo, True, label)
+                    total += region_cost
+                    cum += region_cost
+                    jump_to = merge_idx
+                    break
                 if mnem == "jsr":
                     ms = re.match(r"^([A-Za-z_]\w*)", operand)
                     sc = self._call_cost(ms.group(1), cum, depth + 1) if ms else None
@@ -863,12 +882,139 @@ class Analyser:
                     line_odd = True
                 total += cost
                 cum += cost
+            if jump_to is not None:
+                idx = jump_to          # branch region already recorded; resume at merge
+                continue
             if line_has_instr:
                 self._record_sub_line(idx, line_cost, line_odd, True, label)
             if done is not None:
                 return done
             idx += 1
         return total, False
+
+    def _scan_straight(self, start_idx, cum, stop_idx):
+        """Walk straight-line body lines from start_idx, summing cost and recording
+        per-line, until: reaching stop_idx (kind='reached'), a branch/JMP/BRA
+        (kind='branch', target=label), or RTS/RTI (kind='rts'). Returns a dict
+        {cost, recs, kind, target} or None if unparseable / hits a FOR it can't
+        replay. Used to evaluate the two arms of a balanced if/else in a sub."""
+        cost = 0
+        recs = []
+        idx = start_idx
+        for_stack = []
+        guard = 0
+        while idx < len(self.lines):
+            guard += 1
+            if guard > 2000:
+                return None
+            if idx == stop_idx and not for_stack:
+                return {"cost": cost, "recs": recs, "kind": "reached", "target": None}
+            code = split_comment(self.lines[idx])[0]
+            stripped = code.strip()
+            mFor = re.match(r"(?i)^FOR\s+\w+\s*,(.+)$", stripped)
+            if mFor and ":" not in code:
+                for_stack.append([idx + 1, self._for_iter_count(mFor.group(1))])
+                idx += 1
+                continue
+            if re.match(r"(?i)^NEXT\b", stripped) and ":" not in code and for_stack:
+                fr = for_stack[-1]
+                fr[1] -= 1
+                if fr[1] > 0:
+                    idx = fr[0]
+                else:
+                    for_stack.pop()
+                    idx += 1
+                continue
+            line_cost = 0
+            line_odd = False
+            line_has = False
+            for st in split_statements(code):
+                st = st.strip()
+                if st == "" or st in ("{", "}", "\\{", "\\}"):
+                    continue
+                if st.startswith("."):
+                    ml = re.match(r"^\.[A-Za-z_]\w*", st)
+                    st = st[ml.end():].strip() if ml else ""
+                    if st == "":
+                        continue
+                if re.match(r"(?i)^(IF|ELIF|ELSE|ENDIF|ERROR|PRINT|ALIGN|EQU[BWDS]"
+                            r"|SKIP|MACRO|ENDMACRO|FOR|NEXT|ORG|GUARD)\b", st):
+                    continue
+                mIns = re.match(r"^([A-Za-z]{3})\b(.*)$", st)
+                if not mIns:
+                    return None
+                mnem = mIns.group(1).lower()
+                operand = mIns.group(2).strip()
+                if mnem in ("rts", "rti"):
+                    line_cost += 6
+                    line_has = True
+                    recs.append((idx, line_cost, line_odd))
+                    return {"cost": cost + line_cost, "recs": recs, "kind": "rts",
+                            "target": None}
+                if mnem in BRANCHES or mnem == "jmp":
+                    line_cost += 3      # taken (rel base 2 +1) / jmp abs 3
+                    line_has = True
+                    recs.append((idx, line_cost, line_odd))
+                    tgt = re.match(r"^([A-Za-z_]\w*)", operand)
+                    return {"cost": cost + line_cost, "recs": recs, "kind": "branch",
+                            "target": tgt.group(1) if tgt else None}
+                if mnem == "jsr":
+                    ms = re.match(r"^([A-Za-z_]\w*)", operand)
+                    sc = self._call_cost(ms.group(1), cum) if ms else None
+                    if sc is None:
+                        return None
+                    line_cost += sc[0]
+                    cum += sc[0]
+                    line_has = True
+                    continue
+                try:
+                    mode, base, addr = classify(mnem, operand, self.symbols, self.zp_symbols)
+                except CostError:
+                    return None
+                c, note, _ = self._cost_with_stretch(mnem, mode, base, addr, operand, cum, 0)
+                line_cost += c
+                cum += c
+                line_has = True
+                if note.startswith("stretched(+1)"):
+                    line_odd = True
+            if line_has:
+                recs.append((idx, line_cost, line_odd))
+            cost += line_cost
+            idx += 1
+        return None
+
+    def _balanced_region(self, br_idx, br_label, cum):
+        """Resolve a balanced if/else that begins with a forward conditional branch
+        at line br_idx (Bcc br_label). Both arms must reach a common merge label at
+        equal cost (so the routine's cost is deterministic). Returns
+        ('ok', cost, merge_idx, recs) | ('unbalanced', a, b, br_idx) | None.
+
+        Arm A = fall-through (branch NOT taken, 2c) from br_idx+1.
+        Arm B = the branch TAKEN (3c) from the target label.
+        recs lists (line_idx, cost, odd) for the branch + both arms' bodies."""
+        tgt_idx = self._find_label_line(br_label, br_idx + 1, len(self.lines))
+        if tgt_idx is None:                       # not a forward branch
+            return None
+        A = self._scan_straight(br_idx + 1, cum + 2, tgt_idx)
+        if A is None:
+            return None
+        if A["kind"] == "reached":                # fell straight into the target:
+            merge_idx = tgt_idx                   # a skip-if (one-sided) -> not const cost
+        elif A["kind"] == "branch":
+            merge_idx = self._find_label_line(A["target"], 0, len(self.lines))
+            if merge_idx is None or merge_idx <= br_idx:
+                return None
+        else:                                     # arm A returns (RTS): two exit costs
+            return None
+        B = self._scan_straight(tgt_idx, cum + 3, merge_idx)
+        if B is None or B["kind"] != "reached":
+            return None
+        cost_a = 2 + A["cost"]
+        cost_b = 3 + B["cost"]
+        if cost_a != cost_b:
+            return ("unbalanced", cost_a, cost_b, br_idx)
+        recs = [(br_idx, 2, False)] + A["recs"] + B["recs"]
+        return ("ok", cost_a, merge_idx, recs)
 
     def _for_iter_count(self, rest):
         """Iteration count of `FOR var,a,b[,c]` from the part after the var."""
