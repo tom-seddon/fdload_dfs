@@ -380,7 +380,36 @@ only to comment-free lines; the full breakdown is in the report.
   detection scans the loop body *and its called subs*, so it correctly reports
   "per-row R12/R13 address rewrite" even though the writes are inside a sub.
 
+## Per-line-only mode (`"vertical": null`)
+
+Set `vertical` to `null` in the config to run **horizontal per-line cycle
+annotation only** — per-instruction `; Nc` costs — and skip the PAL-frame
+analysis, the `[vert]` boundary tags, and the effect summary entirely. Use this
+for effects that **don't fit the single-rupture-loop model**: the vertical check
+picks the one largest-iter loop and multiplies only *that* by its trip count, so
+any effect with several significant loops would be mis-summed and report a bogus
+"312 OK". In this mode, prefer `--annotate-missing` **without**
+`--add-running-totals`, because the `<== Nc` running totals depend on a correct
+cumulative count, which those extra loops break.
+
+- **vblinds** (`just-rasters`, BeebAsm) — the worked example of this mode. It's a
+  **fixed-duration buffer-fill**, not a per-scanline rupture: `linear_to_screen_loop`
+  (×80 over the 160-byte buffer) + `JSR vblinds_draw_row` (14× the constant-time
+  `vblinds_draw_bar`) + a `.here` timing loop (×93). `draw_bar` is constant-time
+  in `bar_max` (loop1 does `width` iters, loop2 the remaining `bar_max-width`, so
+  the total is always `bar_max` = 40, fixed in `vblinds_init`); the walker can't
+  resolve its two-loop shape, so it's pinned via `subroutine_cycles`
+  (`vblinds_draw_bar: 674`) and `draw_row` then inlines to 9829c. Per-instruction
+  costs are exact; a `[cycle-note]` header in the source records that cumulative
+  timing isn't modelled and the first tail-frame CRTC write is phase-approximate.
+
 ## Known limitations / not yet done
+
+- **Multi-loop fixed-duration effects** (e.g. vblinds) are not summed for
+  vertical/PAL-frame validation — the model multiplies only one rupture loop by
+  its trip count. Such effects use per-line-only mode (`"vertical": null`) above.
+  A future enhancement could accumulate every loop's `iter_len × trips` (plus the
+  straight-line remainder) to validate the whole function's total.
 
 - Per-line R12/R13 address-selection correctness and full char-level CRTC
   scanline emission (dummy-scanline / C0<2 modelling) — the vertical check covers

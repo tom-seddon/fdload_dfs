@@ -1,0 +1,31 @@
+{
+  "file": "C:/Users/khcon/OneDrive/BEEB/Repos/just-rasters/fx/vblinds.asm",
+  "function": "vblinds_draw",
+  "end_label": "vblinds_erase_line",
+  "entry_phase": 0,
+  "scanline_cycles": 128,
+  "page_align_macros": ["PAGE_ALIGN"],
+  "page_aligned_symbols": [],
+  "_comment_subs": "draw_bar is a constant-time fn: loop1 (width iters) + loop2 (bar_max-width iters) = bar_max total, so its cost is data-dependent (author assumes bar_max=40 -> 674c inc JSR). The walker can't resolve this statically, so we pin it here to the author's figure. draw_row inlines correctly once draw_bar is pinned.",
+  "subroutine_cycles": {
+    "vblinds_draw_bar": 674
+  },
+  "symbols": {
+    "screen_base_addr": 12288,
+    "locals_start": 64,
+    "LINEAR_BUFFER_width": 160,
+    "LINEAR_BUFFER_start": 48,
+    "MODE2_LEFT_MASK": 170,
+    "MODE2_RIGHT_MASK": 85
+  },
+  "_comment_vertical": "vblinds is a fixed-duration buffer-fill effect (linear_to_screen_loop over the 160-byte buffer + 14 constant-time draw_bar calls + a .here timing loop), NOT a single per-scanline rupture loop. The vertical model can only multiply ONE loop by its trip count, so it would undercount the total and report a bogus pass. Vertical analysis is disabled (null); only horizontal per-line cycle costs + running totals are annotated.",
+  "vertical": null,
+  "register_constraints": {
+    "4":  { "before_row_end": true, "note": "Vertical total-1 (rows)." },
+    "6":  { "before_row_end": true, "note": "Vertical displayed (rows)." },
+    "7":  { "before_row_end": true, "note": "Vertical sync position (rows)." },
+    "9":  { "before_row_end": true, "note": "Scanlines per row -1." },
+    "12": { "before_row_end": true, "note": "Screen start address high." },
+    "13": { "before_row_end": true, "note": "Screen start address low." }
+  }
+}
