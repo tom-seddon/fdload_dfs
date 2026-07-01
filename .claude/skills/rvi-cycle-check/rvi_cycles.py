@@ -311,6 +311,7 @@ class SrcLine:
         self.is_wait = False
         self.odd_stretch = False   # a stretched access on this line cost only +1
         self.izy_pagecross = False # an (zp),Y read that may cross a page
+        self.inactive = False      # line is in a false IF/ELSE branch (not assembled)
 
 
 # ----------------------------------------------------------------------------
@@ -466,6 +467,7 @@ class Analyser:
         if self.origin is not None:
             pc = self.origin
         src_lines = []
+        self.active_mask = self._compute_active_mask()
         last_imm = None         # value of most recent lda #imm
         selected_reg = None     # last value written to &fe00
         pending_adjust = 0      # deferred fall-through (-1) applied at next real code
@@ -488,6 +490,12 @@ class Analyser:
             sl.cum_after = cum      # default (overwritten below for code lines)
             code = sl.code
             stripped = code.strip()
+
+            # skip lines in a false IF/ELSE branch: not assembled, zero cost
+            if not self.active_mask[idx]:
+                sl.inactive = True
+                idx += 1
+                continue
 
             # FOR var,a,b[,c] : push a replay frame (count handled at NEXT)
             mFor = re.match(r"(?i)^FOR\s+\w+\s*,(.+)$", stripped)
@@ -1132,6 +1140,81 @@ class Analyser:
                         pass
         return init
 
+    def _eval_cond(self, expr):
+        """Evaluate a conditional-assembly expression to a bool. Handles the
+        comparison operators BeebAsm/64tass use plus bare (non-zero = true)."""
+        expr = expr.strip()
+        if expr == "":
+            return True
+        for op in ("<>", "!=", "<=", ">=", "==", "=", "<", ">"):
+            i = expr.find(op)
+            if i > 0:
+                lhs = eval_expr(expr[:i], self.symbols)
+                rhs = eval_expr(expr[i + len(op):], self.symbols)
+                if op in ("=", "=="):
+                    return lhs == rhs
+                if op in ("<>", "!="):
+                    return lhs != rhs
+                if op == "<=":
+                    return lhs <= rhs
+                if op == ">=":
+                    return lhs >= rhs
+                if op == "<":
+                    return lhs < rhs
+                return lhs > rhs
+        return eval_expr(expr, self.symbols) != 0
+
+    def _compute_active_mask(self):
+        """Per-line True/False: is the line assembled given the symbol table?
+        Evaluates IF/ELIF/ELSE/ENDIF (nested) against self.symbols so lines in a
+        false branch are dropped. A condition that can't be evaluated defaults to
+        active (include the body -- matches the old walk-everything behaviour)."""
+        active = [True] * len(self.lines)
+        stack = []      # frames: {"parent": bool, "taken": bool, "cur": bool}
+        for i, raw in enumerate(self.lines):
+            stmt = None
+            for st in split_statements(split_comment(raw)[0]):
+                s = st.strip()
+                ml = re.match(r"^\.[A-Za-z_]\w*\s*", s)   # drop a leading label
+                if ml:
+                    s = s[ml.end():].strip()
+                if s:
+                    stmt = s
+                    break
+            parent = stack[-1]["cur"] if stack else True
+            m = re.match(r"(?i)^(IF|ELIF|ELSE|ENDIF)\b(.*)$", stmt) if stmt else None
+            if not m:
+                active[i] = parent
+                continue
+            kind, expr = m.group(1).upper(), m.group(2).strip()
+            if kind == "IF":
+                try:
+                    cur = parent and self._eval_cond(expr)
+                except CostError:
+                    cur = parent       # unknown -> include body
+                stack.append({"parent": parent, "taken": bool(cur), "cur": bool(cur)})
+                active[i] = parent
+            elif kind == "ELIF" and stack:
+                fr = stack[-1]
+                if fr["parent"] and not fr["taken"]:
+                    try:
+                        cur = self._eval_cond(expr)
+                    except CostError:
+                        cur = True
+                    fr["cur"] = bool(cur)
+                    fr["taken"] = fr["taken"] or bool(cur)
+                else:
+                    fr["cur"] = False
+                active[i] = fr["parent"]
+            elif kind == "ELSE" and stack:
+                fr = stack[-1]
+                fr["cur"] = fr["parent"] and not fr["taken"]
+                fr["taken"] = True
+                active[i] = fr["parent"]
+            elif kind == "ENDIF" and stack:
+                active[i] = stack.pop()["parent"]
+        return active
+
     def _find_mem_init(self, lo, hi, mem):
         """Last `lda #N ... sta MEM` (or `stz MEM`) before line hi -> N.
         The lda may be on an earlier line than the sta, so track across lines."""
@@ -1379,6 +1462,8 @@ def rewrite(an, scanline, annotate_missing=False, add_running_totals=False,
     for ln, sl in an.sub_lines.items():
         by_lineno.setdefault(ln, sl)
     for lineno, sl in by_lineno.items():
+        if getattr(sl, "inactive", False):
+            continue                      # false IF/ELSE branch: leave untouched
         raw = lines[lineno - 1]
         code, comment, idx = split_comment(raw)
         if RUNNING_RE.search(comment):

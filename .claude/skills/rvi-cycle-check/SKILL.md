@@ -204,6 +204,14 @@ scanning the source's `ORG <&100` region for ZP labels; add others via
   Override with `vertical.loop_iterations` if auto-detection fails.
 - **`{` / `}`** anonymous-block delimiters and `\{` / `\}` are zero-cost.
 - **Decimal zero-page operands** (e.g. `BIT 0` = `BIT zp` 3c, not `BIT abs` 4c).
+- **Conditional assembly** `IF / ELIF / ELSE / ENDIF` (nested) is evaluated
+  against the symbol table, so lines in a false branch are dropped instead of
+  double-counted. Supports the comparison operators (`= <> != <= >= < >`) and
+  bare expressions (non-zero = true). A condition that can't be evaluated (a
+  symbol not in `symbols`) defaults to *active* (include the body). Provide the
+  switch symbols in the config `symbols` (e.g. `"SMILEY_DEBUG_RASTERS": 0`) so a
+  `IF DEBUG … ELSE … ENDIF` costs only the taken branch — essential for a
+  balanced-diamond check whose arm contains an `IF/ELSE`.
 - **`JSR` into a subroutine** — charged as the whole call (6c JSR + body + RTS),
   not a flat 6c. A configured `subroutine_cycles` entry gives a fixed total (for
   calibrated/external spins like `cycles_wait_128` = 128c); otherwise a local
@@ -402,6 +410,21 @@ cumulative count, which those extra loops break.
   (`vblinds_draw_bar: 674`) and `draw_row` then inlines to 9829c. Per-instruction
   costs are exact; a `[cycle-note]` header in the source records that cumulative
   timing isn't modelled and the first tail-frame CRTC write is phase-approximate.
+- **smiley** (`just-rasters`, BeebAsm) — the trickiest so far. A **smooth-scrolling
+  status split** that builds a custom PAL frame from a display cycle (R4=27,
+  R6=`smiley_visible`, **R5=`smiley_line` vertical-adjust** for sub-row smooth
+  scroll) + a vsync cycle, all with **data-dependent register values** and a
+  data-dependent display-loop trip count (`224 - smiley_line`); the frame stays
+  312 *by design* (R5 vadj trades off against the trip count). Runs in
+  per-line-only mode (`"vertical": null`) with three wait loops
+  (`cycles_wait_128` ×8/×8/×32, pinned via `subroutine_cycles`). The property
+  that **does** matter and is checked: the `loop_display` **balanced diamond** —
+  the black-out arm (write `PAL_black` to `&FE21`, which contains a
+  `IF SMILEY_DEBUG_RASTERS … ELSE … ENDIF`) vs the `NOP` arm — is verified at
+  **17c both paths** so the raster stays stable whichever rows are blacked out.
+  This is the effect that motivated conditional-assembly evaluation (with
+  `SMILEY_DEBUG_RASTERS=FALSE` the debug arm must not be counted). Display loop
+  is 127c (−1c/scanline soft drift).
 
 ## Known limitations / not yet done
 

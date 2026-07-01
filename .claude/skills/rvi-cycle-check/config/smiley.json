@@ -1,0 +1,36 @@
+{
+  "file": "C:/Users/khcon/OneDrive/BEEB/Repos/just-rasters/fx/smiley.asm",
+  "function": "smiley_draw",
+  "end_label": "smiley_addr_LO",
+  "entry_phase": 0,
+  "scanline_cycles": 128,
+  "page_align_macros": ["PAGE_ALIGN"],
+  "page_aligned_symbols": [],
+  "_comment_subs": "cycles_wait_128 is the shared 128c wait sub (also used by copper/plasma/parallax).",
+  "subroutine_cycles": {
+    "cycles_wait_128": 128
+  },
+  "symbols": {
+    "screen_base_addr": 12288,
+    "SMILEY_STATUS_ADDR": 30848,
+    "locals_start": 64,
+    "PAL_black": 7,
+    "PAL_red": 6,
+    "PAL_blue": 3,
+    "PAL_green": 5,
+    "SMILEY_DEBUG_RASTERS": 0,
+    "FALSE": 0,
+    "TRUE": 1
+  },
+  "_comment_vertical": "smiley is a smooth-scrolling status-split effect built from multiple CRTC cycles (display cycle + vsync cycle) with DATA-DEPENDENT register values (R6=smiley_visible, R5=smiley_line vadj) and a data-dependent display-loop trip count (224 - smiley_line). The PAL frame stays 312 by design (R5 vertical-adjust compensates the trip count), but proving that needs the vadj<->trip-count model this checker doesn't have, and the multiple loops (display ~224 scanlines, extra x8, hide x32) can't be single-loop-summed. So vertical analysis is disabled; only horizontal per-line cycle costs are annotated. The cycle-exactness that DOES matter here -- the balanced path1/path2 diamond (black-out vs NOP, both 17c) and the display-loop scanline period -- is reported by the horizontal pass.",
+  "vertical": null,
+  "register_constraints": {
+    "4":  { "before_row_end": true, "note": "Vertical total-1 (rows)." },
+    "5":  { "before_row_end": true, "note": "Vertical adjust (extra scanlines) -- smooth scroll." },
+    "6":  { "before_row_end": true, "note": "Vertical displayed (rows)." },
+    "7":  { "before_row_end": true, "note": "Vertical sync position (rows)." },
+    "8":  { "before_row_end": true, "note": "Display control (R8)." },
+    "12": { "before_row_end": true, "note": "Screen start address high." },
+    "13": { "before_row_end": true, "note": "Screen start address low." }
+  }
+}
