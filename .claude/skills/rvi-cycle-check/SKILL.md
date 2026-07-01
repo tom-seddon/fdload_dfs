@@ -370,6 +370,15 @@ only to comment-free lines; the full breakdown is in the report.
   parity-wrap arm vs a 6×`NOP` no-wrap arm). Its loop is the **increment-to-wrap**
   idiom `LDX #2 … INX : BNE here` (254 trips), which the trip-count detector now
   recognises. Loop is exactly 128c. Frame 312, vsync 280.
+- **logo** (`just-rasters`, BeebAsm) — vertical rupture (R9=0, 1 scanline/row ×
+  254 rows) that rewrites R12/R13 **and** the ULA palette every row via a
+  **fall-through subroutine pair**: `logo_set_white` (4× `STA &FE21` copper) has
+  no `RTS` and falls through into `logo_set_charrow` (R12/R13 rewrite), so
+  `JSR logo_set_white` is inlined as the combined 117c chain. Loop `LDX #1 …
+  CPX #255 : BNE here` (254 trips, compare pattern). +1c/iteration soft-window
+  drift (loop = 129c). Frame 312, vsync 280. The summary's per-row-CRTC-write
+  detection scans the loop body *and its called subs*, so it correctly reports
+  "per-row R12/R13 address rewrite" even though the writes are inside a sub.
 
 ## Known limitations / not yet done
 

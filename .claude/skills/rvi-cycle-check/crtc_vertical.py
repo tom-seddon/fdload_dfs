@@ -91,7 +91,35 @@ def build_effect_summary(an, vcfg):
     kind = "Vertical Rupture" if an.soft_window else "Vertical Rupture + horizontal RVI"
     if pal_writes >= 4:
         kind += f" + per-row ULA palette ({pal_writes}x &FE2x copper)"
-    rvi = "no per-scanline CRTC writes" if an.soft_window else "per-scanline R0 (cycle-exact)"
+
+    # Does the loop reprogram the CRTC each row? Scan the loop body and any
+    # subroutine it calls (fall-through included) for writes to the CRTC port
+    # &FE00/&FE01 -- i.e. per-row R12/R13 screen-address rewrites. Setup/fixup
+    # &FE00 writes are outside this range so they don't count.
+    lbl0 = an._find_label_line(loop["label"], s, e)
+    br0 = loop["lineno"]
+    loop_scan = []
+    if lbl0 is not None:
+        for i in range(lbl0, br0):
+            loop_scan.append(an.lines[i])
+            for st in split_statements(split_comment(an.lines[i])[0]):
+                m = _re.match(r"(?i)^jsr\s+([A-Za-z_]\w*)", st.strip())
+                if m:
+                    sub0 = an._find_label_line(m.group(1), 0, len(an.lines))
+                    if sub0 is not None:      # walk sub to its RTS (fall-through ok)
+                        for j in range(sub0, len(an.lines)):
+                            loop_scan.append(an.lines[j])
+                            if _re.search(r"(?i)\brt[si]\b", an.lines[j]):
+                                break
+    loop_crtc = any(_re.search(r"(?i)\bst[axy]\s+&fe0[01]\b", st)
+                    for ln in loop_scan
+                    for st in split_statements(split_comment(ln)[0]))
+    if loop_crtc:
+        rvi = "per-row R12/R13 address rewrite (soft window)" if an.soft_window \
+              else "per-scanline R0 (cycle-exact)"
+    else:
+        rvi = "no per-scanline CRTC writes" if an.soft_window \
+              else "per-scanline R0 (cycle-exact)"
     vsync = vcfg.get("target_vsync_pal_line")
     vtxt = f", vsync PAL {vsync}" if vsync is not None else ""
 

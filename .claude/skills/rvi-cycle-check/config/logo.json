@@ -1,0 +1,30 @@
+{
+  "file": "C:/Users/khcon/OneDrive/BEEB/Repos/just-rasters/fx/logo.asm",
+  "function": "logo_draw",
+  "end_label": "logo_kill",
+  "entry_phase": 0,
+  "scanline_cycles": 128,
+  "page_align_macros": ["PAGE_ALIGN"],
+  "page_aligned_symbols": [],
+  "subroutine_cycles": {},
+  "symbols": {
+    "screen_base_addr": 12288,
+    "locals_start": 64
+  },
+  "vertical": {
+    "entry_pal_line": 0,
+    "frame_lines": 312,
+    "target_vsync_pal_line": 280,
+    "entry_R5": 0,
+    "loop_iterations": null,
+    "expected_visible_lines": null
+  },
+  "register_constraints": {
+    "4":  { "before_row_end": true, "note": "Vertical total-1 (rows)." },
+    "6":  { "before_row_end": true, "note": "Vertical displayed (rows)." },
+    "7":  { "before_row_end": true, "note": "Vertical sync position (rows)." },
+    "9":  { "before_row_end": true, "note": "Scanlines per row -1." },
+    "12": { "before_row_end": true, "note": "Screen start address high." },
+    "13": { "before_row_end": true, "note": "Screen start address low." }
+  }
+}
