@@ -195,7 +195,12 @@ scanning the source's `ORG <&100` region for ZP labels; add others via
   exit + unconditional backward jump, e.g. `DEC c / BEQ done / JMP here / .done`).
 - **Loop trip counts** — `ldx #N … inx/dex … cpx #M : bne`; decrement-to-zero
   loops (`lda #N : sta MEM … dec MEM …`), including loops **unrolled** so the
-  counter is decremented more than once per iteration (trips = init / decs).
+  counter is decremented more than once per iteration (trips = init / decs); and
+  **increment-to-wrap** loops (`ldx #N … inx … bne` with no compare, exiting when
+  the counter rolls 255→0, trips = (256 − init) / incs — the loop counter is the
+  register incremented immediately before the back-branch, so a second `inx/iny`
+  used as a data index elsewhere in the body doesn't confuse detection, e.g.
+  checker-zoom: `ldx #2 … iny … inx : bne here` → 254 trips).
   Override with `vertical.loop_iterations` if auto-detection fails.
 - **`{` / `}`** anonymous-block delimiters and `\{` / `\}` are zero-cost.
 - **Decimal zero-page operands** (e.g. `BIT 0` = `BIT zp` 3c, not `BIT abs` 4c).
@@ -359,6 +364,12 @@ only to comment-free lines; the full breakdown is in the report.
   **38c**; the author's `36c` is 2c low). Setup lands *exactly* on 512c, which
   first exposed the inserted-boundary-marker `[vert]` idempotence case (now fixed).
   Frame 312, vsync 280, +1c/iteration drift.
+- **checker-zoom** (`just-rasters`, BeebAsm) — vertical rupture (R9=0/R4=0, 1
+  scanline/row × 254 rows), with a per-row `STA &FE20` mode/parity write and a
+  **balanced `BCC/BRA`-merge diamond** in the loop body (both paths 15c — the
+  parity-wrap arm vs a 6×`NOP` no-wrap arm). Its loop is the **increment-to-wrap**
+  idiom `LDX #2 … INX : BNE here` (254 trips), which the trip-count detector now
+  recognises. Loop is exactly 128c. Frame 312, vsync 280.
 
 ## Known limitations / not yet done
 

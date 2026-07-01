@@ -1048,7 +1048,9 @@ class Analyser:
 
         reg = cmp_val = step = None
         dec_counts = {}         # counter ('x'/'y' or memory) -> decrements per iter
+        inc_counts = {}         # counter ('x'/'y') -> increments per iter
         has_exit_cond = False   # a beq/bne somewhere in the body (the exit test)
+        exit_branch = None      # mnemonic of the loop's own back-branch (bne/beq)
         for i in body:
             for st in stmts(i):
                 m = re.match(r"(?i)^(cpx|cpy)\b\s*#(.+)$", st)
@@ -1065,11 +1067,16 @@ class Analyser:
                         if s[1] == -1:
                             dec_counts["x" if mn == "dex" else "y"] = \
                                 dec_counts.get("x" if mn == "dex" else "y", 0) + 1
+                        else:
+                            inc_counts["x" if mn == "inx" else "y"] = \
+                                inc_counts.get("x" if mn == "inx" else "y", 0) + 1
                 md = re.match(r"(?i)^dec\s+([A-Za-z_]\w*)", st)
                 if md:
                     dec_counts[md.group(1)] = dec_counts.get(md.group(1), 0) + 1
-                if re.match(r"(?i)^(beq|bne)\b", st):
+                bm = re.match(r"(?i)^(beq|bne)\b", st)
+                if bm:
                     has_exit_cond = True
+                    exit_branch = bm.group(1).lower()      # last one = the back-branch
 
         # pattern 1: explicit compare
         if reg is not None and cmp_val is not None and step is not None:
@@ -1088,6 +1095,28 @@ class Analyser:
                 init = self._find_mem_init(start, loop_line, counter)
             if init is not None and ndecs > 0:
                 return init // ndecs
+
+        # pattern 3: increment-to-wrap. `ldx #INIT ... inx ... bne` with no
+        # explicit compare loops until the counter rolls 255->0, i.e.
+        # (256 - INIT) times (divided by increments per iter if unrolled).
+        # The loop counter is the register incremented immediately before the
+        # back-branch (there may be other inx/iny in the body, e.g. a parity
+        # index), so search backward from the branch for the nearest inc.
+        if inc_counts and exit_branch == "bne" and cmp_val is None:
+            counter = None
+            for i in range(branch_idx, loop_line - 1, -1):
+                for st in reversed(stmts(i)):
+                    mi = re.match(r"(?i)^in([xy])\b", st.strip())
+                    if mi:
+                        counter = mi.group(1).lower()
+                        break
+                if counter:
+                    break
+            if counter is not None:
+                nincs = inc_counts.get(counter, 0)
+                init = self._find_imm_init(start, loop_line, "ld%s" % counter)
+                if init is not None and nincs > 0:
+                    return (256 - init) // nincs
         return None
 
     def _find_imm_init(self, lo, hi, mnem):
