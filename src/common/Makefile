@@ -31,6 +31,6 @@ default:
 	$(TASS) --cbm-prg -L "$(BUILD)/boot.lst" -o "$(BUILD)/boot.prg" "boot.s65" --dump-labels "--labels=$(BUILD)/boot.sym"
 	$(PYTHON) "$(BEEB_BIN)/prg2bbc.py" --io "$(BUILD)/boot.prg" "$(BEEBLINK)/Z/$$.!BOOT"
 
-	$(BEEBASM) -w -i "framework_bank.asm" -o "$(BUILD)/framework_bank.dat" > "$(BUILD)/framework_bank.txt"
+	$(BEEBASM) -w -i "framework_bank.asm" -o "$(BUILD)/framework_bank.dat" -dd -labels "$(BUILD)/framework_bank.labels" > "$(BUILD)/framework_bank.txt"
 	$(ZX02TOOL) pack "$(BUILD)/framework_bank.dat" -o "$(BUILD)/Z.FW"
 
