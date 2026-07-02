@@ -12,7 +12,7 @@
             "args":{
                 "base_default_config":"Master 128 (MOS 3.50)",
 		"boot":true,
-		"debug_ports":true
+		"extra_debugging_hardware":true
             }
         }
     ]
