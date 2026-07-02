@@ -336,6 +336,12 @@ class Analyser:
         self.func = cfg.get("function", "fx_draw_function")
         self.end_label = cfg.get("end_label")
         self.ann_format = cfg.get("annotation_format", "cycles")
+        # Fixed-cost macro calls (trace mode). The funky-fresh teletext macros
+        # write &FE20 (ULA, not stretched) so their cost is phase-independent;
+        # effect-specific macros (e.g. a CRTC-setup macro) go in config.
+        self.macro_cycles = {"TELETEXT_ENABLE_6": 6, "TELETEXT_ENABLE_7": 7,
+                             "TELETEXT_DISABLE_6": 6, "TELETEXT_DISABLE_7": 7}
+        self.macro_cycles.update(cfg.get("macro_cycles", {}))
         self.origin = cfg.get("origin", None)
         self.page_aligned = set(cfg.get("page_aligned_symbols", []))
         self.page_align_macros = set(cfg.get("page_align_macros", []))
@@ -821,6 +827,16 @@ class Analyser:
                     cum += n * self.scanline
                     sl.line_cost += n * self.scanline
                     sl.is_wait = True
+                    continue
+                # fixed-cost macro call (UPPERCASE identifier in macro_cycles);
+                # checked before the instruction match so e.g. TELETEXT_* isn't
+                # mistaken for a 3-letter mnemonic.
+                mMac = re.match(r"^([A-Z][A-Z0-9_]+)\b", st)
+                if mMac and mMac.group(1) in self.macro_cycles:
+                    mc = self.macro_cycles[mMac.group(1)]
+                    cum += mc
+                    sl.line_cost += mc
+                    sl.has_instr = True
                     continue
                 mIns = re.match(r"^([A-Za-z]{3})\b(.*)$", st)
                 if not mIns:

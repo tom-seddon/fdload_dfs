@@ -472,6 +472,16 @@ authoritative check**.
   stretched `STA &FE01` in `scanline0` **resyncs to 108** regardless, so the 1c is
   absorbed (a nice illustration of the stretch-barrier property).
 
+- **funky-fresh / fx-chunky-twister** (`funky-fresh`, BeebAsm) — same RVI family;
+  uses fixed-cost macros directly (`CHUNKY_TWISTER_SET_CRTC_FROM_ANGLE`=65c via
+  config `macro_cycles`; the `TELETEXT_*` macros are built-in 6c/7c). Frame
+  validates (312, vsync 272). Found a single cumulative typo at line 298
+  (`52`→`51`) that cascaded through the dispatch and was absorbed at the scanline0
+  resync (the same 1c-absorbed pattern as checker-zoom). Its `angle_to_quadrant` /
+  `x_wibble` / `cos` tables are `PAGE_ALIGN`ed (so the indexed reads are 4c,
+  cycle-exact); the small `twister_quadrant_colour_*` tables are not aligned but
+  are indexed 0–3 (bounded, low cross risk).
+
 ### Trace-mode frame check (`trace_frame_check`)
 
 For a traced RVI effect, set a `vertical` block with `frame_lines`,
