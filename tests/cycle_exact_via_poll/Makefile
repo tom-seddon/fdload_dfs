@@ -8,6 +8,7 @@ _SSD:=$(BUILD)/cycle_exact_via_poll.ssd
 .PHONY:default
 default:
 	$(SHELLCMD) echo-emacs-compilation-mode-marker
+	$(SHELLCMD) mkdir "$(BUILD)"
 
 	$(BEEBASM) -v -i "cycle_exact_via_poll.asm" -boot POLL -do "$(_SSD)" > "$(BUILD)/cycle_exact_via_poll.txt"
 
