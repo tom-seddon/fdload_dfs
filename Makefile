@@ -70,7 +70,7 @@ TASS_EXE:=$(BIN)/64tass
 # How to run tools. May include command line options.
 ZX02:=$(ZX02_EXE)
 BEEBASM:=$(BEEBASM_EXE)		#TODO should this have -w?
-TASS:=$(TASS_EXE) -Wall --case-sensitive $(if $(VERBOSE),,--quiet) --m65c02 --verbose-list
+TASS:=$(TASS_EXE) -Wall --case-sensitive $(if $(VERBOSE),,--quiet) --m65c02 --verbose-list --line-numbers
 ZX02TOOL:=$(PYTHON) "$(BIN)/zx02tool.py"
 export ZX02
 export BEEBASM
