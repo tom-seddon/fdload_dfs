@@ -1,0 +1,22 @@
+{
+  "file": "C:/Users/khcon/OneDrive/BEEB/Repos/funky-fresh/src/fx-static-image.asm",
+  "function": "fx_static_image_draw",
+  "end_label": "fx_static_image_default_palette",
+  "entry_phase": 0,
+  "scanline_cycles": 128,
+  "trace_execution": true,
+  "annotation_format": "increment",
+  "page_align_macros": ["PAGE_ALIGN"],
+  "page_aligned_symbols": [],
+  "extra_zp_symbols": ["prev_scanline"],
+  "symbols": { "screen_addr": 12288, "static_image_scrn_addr": 12928, "FALSE": 0, "TRUE": 1 },
+  "vertical": { "frame_lines": 312, "target_vsync_pal_line": 272, "setup_scanlines": 0, "loop_iterations": 0, "loop_scanlines_each": 1 },
+  "register_constraints": {
+    "4":  { "before_row_end": true, "note": "Vertical total-1 (rows)." },
+    "6":  { "before_row_end": true, "note": "Vertical displayed (rows)." },
+    "7":  { "before_row_end": true, "note": "Vertical sync position (rows)." },
+    "9":  { "before_row_end": true, "note": "Scanlines per row -1." },
+    "12": { "before_row_end": true, "note": "Screen start address high." },
+    "13": { "before_row_end": true, "note": "Screen start address low." }
+  }
+}
