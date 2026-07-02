@@ -511,6 +511,11 @@ authoritative check**.
   comparison since authors annotate the taken loop cost (3c). Fixed 2 mis-copied
   tail cums (220/221).
 
+- **funky-fresh / fx-spin-bar** (`funky-fresh`, BeebAsm) — static 312-line frame
+  (R4=38/R9=7, vsync R7=34, R6=30 visible) with a 240-iteration per-scanline
+  palette loop (`bar_y_rasters`/`bar_y_colours`, page-aligned). Validated clean
+  first pass (312, vsync 272).
+
 ### Trace-mode frame check (`trace_frame_check`)
 
 For a traced RVI effect, set a `vertical` block with `frame_lines`,
