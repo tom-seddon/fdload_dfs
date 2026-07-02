@@ -18,7 +18,7 @@ endif
 
 SHELLCMD:=$(PYTHON) "../shellcmd.py/shellcmd.py"
 
-BUILD:=../../build
+BUILD:=../../build.tass64
 
 ##########################################################################
 ##########################################################################
@@ -44,7 +44,7 @@ _init_vs:
 	$(MAKE) _init_vs_2 "CMAKE_PATH=$(shell "C:\Program Files (x86)\Microsoft Visual Studio\Installer\vswhere.exe" -version $(VSVER) -property installationPath)/common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin/cmake.exe"
 
 .PHONY:_init_vs_2
-_init_vs_2: _BUILD:=$(BUILD)/tass64-vs$(VSYEAR)
+_init_vs_2: _BUILD:=$(BUILD)/vs$(VSYEAR)
 _init_vs_2:
 	$(SHELLCMD) rm-tree "$(_BUILD)"
 	"$(CMAKE_PATH)" -G "Visual Studio $(VSVER) $(VSYEAR)" -B "$(_BUILD)" -S .

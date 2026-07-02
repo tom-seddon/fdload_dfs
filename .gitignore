@@ -2,6 +2,9 @@
 /build/
 /.zx02_cache/
 
+# gets its own build folder, so that make clean can work independently
+/build.64tass/
+
 # tass64 build byproducts
 /dependencies/tass64-code.*/*.o
 /dependencies/tass64-code.*/64tass
