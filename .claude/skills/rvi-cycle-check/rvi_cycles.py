@@ -312,6 +312,7 @@ class SrcLine:
         self.odd_stretch = False   # a stretched access on this line cost only +1
         self.izy_pagecross = False # an (zp),Y read that may cross a page
         self.inactive = False      # line is in a false IF/ELSE branch (not assembled)
+        self.is_loopback = False   # backward loop-back branch (traced as the exit)
 
 
 # ----------------------------------------------------------------------------
@@ -888,8 +889,15 @@ class Analyser:
                 # control flow
                 if mnem in ("jmp", "bra") or mnem in BRANCHES:
                     mt = re.match(r"^([A-Za-z_][A-Za-z0-9_]*)", operand)
-                    tgt_line = (self._find_label_line(mt.group(1), 0, len(self.lines))
-                                if mt else None)
+                    # Resolve within the function first: local labels (.ok/.store/
+                    # .loop) recur across functions, and a whole-file search could
+                    # grab an earlier same-named label and mis-classify the branch
+                    # direction. Fall back to whole-file for cross-function jumps.
+                    tgt_line = None
+                    if mt:
+                        tgt_line = self._find_label_line(mt.group(1), start, end)
+                        if tgt_line is None:
+                            tgt_line = self._find_label_line(mt.group(1), 0, len(self.lines))
                     sl.has_instr = True
                     if mnem in ("jmp", "bra"):
                         cum += 3
@@ -909,14 +917,16 @@ class Analyser:
                         # not-taken (fall-through) path at 2c and remember the
                         # taken path (3c) as the loop exit for a jmp-back loop.
                         backward = tgt_line is not None and tgt_line <= idx
+                        cum += 2
+                        sl.line_cost += 2
                         if backward:
-                            cum += 3
-                            sl.line_cost += 3
-                        else:
-                            cum += 2
-                            sl.line_cost += 2
-                            if tgt_line is not None:
-                                loop_exit = (tgt_line, cum + 1)   # taken would be +3
+                            # loop-back branch: the trace exits here (fall-through,
+                            # not-taken 2c) so the tail phase is correct, but the
+                            # author annotates the TAKEN loop cost (3c) -- flag it
+                            # loop-back so the report doesn't call that a mismatch.
+                            sl.is_loopback = True
+                        elif tgt_line is not None:
+                            loop_exit = (tgt_line, cum + 1)   # taken would be +3
                     continue
 
                 if mnem in ("rts", "rti"):
@@ -1696,9 +1706,12 @@ def build_report(an):
         if sl.line_cost == 0 and not sl.flags and not sl.code.strip():
             continue
         # inactive (false IF/ELSE branch): keep its own annotations out of the
-        # comparison -- they describe the OTHER build variant, not this one.
-        ann = None if sl.inactive else existing_perline(sl.comment, an.ann_format)
-        run_ann = None if sl.inactive else existing_running(sl.comment, an.ann_format)
+        # comparison. A loop-back branch is traced as its not-taken EXIT (2c) so
+        # the tail phase is right, but authors annotate the taken loop cost (3c) --
+        # skip its comparison too so that expected difference isn't a "mismatch".
+        skip_cmp = sl.inactive or getattr(sl, "is_loopback", False)
+        ann = None if skip_cmp else existing_perline(sl.comment, an.ann_format)
+        run_ann = None if skip_cmp else existing_running(sl.comment, an.ann_format)
         mark = ""
         if sl.odd_stretch:
             mark += "  [odd stretch +1]"

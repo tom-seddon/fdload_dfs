@@ -500,6 +500,17 @@ authoritative check**.
   motivated trace-walker FOR handling (trace the body once for per-line display,
   advance the running total by all iterations). Validated clean (312, vsync 272).
 
+- **funky-fresh / fx-path-zoom** (`funky-fresh`, BeebAsm) — a path/texture zoomer,
+  near-identical to frak-zoomer (`jsr frak_line0`=60c, bcc/jmp diamond, `dec/bne`
+  loop) but in `+N (cum)` format with 1-scanline rows (R9=0/R4=0). row_count=239 →
+  239 scanlines; tail from final R4=8/R9=7 = 72; vsync R7=4 → 272. Surfaced two
+  trace bugs (now fixed): branch targets must resolve within the function first
+  (a whole-file search grabbed an earlier `.ok`, mis-classifying the diamond's
+  `bcc` as backward), and a loop-back branch must be traced as its not-taken exit
+  (2c) for the correct tail phase — the report suppresses the loop-back's cost
+  comparison since authors annotate the taken loop cost (3c). Fixed 2 mis-copied
+  tail cums (220/221).
+
 ### Trace-mode frame check (`trace_frame_check`)
 
 For a traced RVI effect, set a `vertical` block with `frame_lines`,

@@ -1,0 +1,37 @@
+{
+  "file": "C:/Users/khcon/OneDrive/BEEB/Repos/funky-fresh/src/fx-path-zoom.asm",
+  "function": "fx_path_zoom_draw",
+  "end_label": "fx_path_zoom_copy",
+  "entry_phase": 0,
+  "scanline_cycles": 128,
+  "trace_execution": true,
+  "annotation_format": "increment",
+  "page_align_macros": ["PAGE_ALIGN"],
+  "page_aligned_symbols": ["frak_lines_LO", "frak_lines_HI", "path_zoom_scanline_addr_LO", "path_zoom_scanline_addr_HI"],
+  "subroutine_cycles": { "frak_line0": 60 },
+  "extra_zp_symbols": ["v", "row_count", "prev_scanline", "readptr"],
+  "symbols": {
+    "screen_base_addr": 12288,
+    "FRAK_SPRITE_HEIGHT": 43,
+    "FX_PATH_ZOOM_SCR_ADDR": 11648,
+    "FALSE": 0,
+    "TRUE": 1
+  },
+  "_comment_vertical": "1-scanline rows (R9=0/R4=0). row_count=239 dec/bne loop = 239 scanlines. tail = final R4=8/R9=7 -> 9*8=72; vsync R7=4 -> 240+4*8=272. setup=1 closes 1+239+72=312 (the scanline -2/-1 setup overlaps the loop's HCC=32 entry).",
+  "vertical": {
+    "frame_lines": 312,
+    "target_vsync_pal_line": 272,
+    "setup_scanlines": 1,
+    "loop_iterations": 239,
+    "loop_scanlines_each": 1
+  },
+  "register_constraints": {
+    "0":  { "before_row_end": true, "note": "Horizontal total-1 -- RVI." },
+    "4":  { "before_row_end": true, "note": "Vertical total-1 (rows)." },
+    "6":  { "before_row_end": true, "note": "Vertical displayed (rows)." },
+    "7":  { "before_row_end": true, "note": "Vertical sync position (rows)." },
+    "9":  { "before_row_end": true, "note": "Scanlines per row -1." },
+    "12": { "before_row_end": true, "note": "Screen start address high." },
+    "13": { "before_row_end": true, "note": "Screen start address low." }
+  }
+}
