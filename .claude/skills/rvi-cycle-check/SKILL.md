@@ -461,6 +461,17 @@ authoritative check**.
   PAL line 272 (visible 238 + R7=17 × 2). The trip count (118) is config-supplied
   because `row_count` is set in the update function, out of the draw's sight.
 
+- **funky-fresh / fx-checker-zoom** (`funky-fresh`, BeebAsm) — same RVI dispatch
+  family, simpler control flow (no mid-loop entry, no teletext). Adds
+  `WAIT_SCANLINES_ZERO_X n` / `WAIT_SCANLINES_PRESERVE_REGS n` = n whole scanlines.
+  Frame validates (312, vsync 272). The tool found its `(cum)` running totals were
+  extensively mis-copied from the vertical-stretch template: a `+4`→`+6` typo at
+  line 215 (cascading through 226) and whole tail blocks (236–238, 256–259) with
+  totals from the wrong effect — all corrected to verified values. The dispatch
+  reaches `jmpinstruc` at HCC=100 (1c shorter path than vertical-stretch); the
+  stretched `STA &FE01` in `scanline0` **resyncs to 108** regardless, so the 1c is
+  absorbed (a nice illustration of the stretch-barrier property).
+
 ### Trace-mode frame check (`trace_frame_check`)
 
 For a traced RVI effect, set a `vertical` block with `frame_lines`,

@@ -809,6 +809,19 @@ class Analyser:
                     sl.line_cost += n
                     sl.is_wait = True
                     continue
+                # WAIT_SCANLINES_ZERO_X n / WAIT_SCANLINES_PRESERVE_REGS n: these
+                # funky-fresh lib macros consume exactly n whole scanlines.
+                mWaitSL = re.match(r"(?i)^WAIT_SCANLINES(?:_ZERO_X|_PRESERVE_REGS)?\s+(.+)$", st)
+                if mWaitSL:
+                    try:
+                        n = eval_expr(mWaitSL.group(1), self.symbols)
+                    except CostError as e:
+                        sl.flags.append(("ERROR", f"WAIT_SCANLINES arg: {e}"))
+                        n = 0
+                    cum += n * self.scanline
+                    sl.line_cost += n * self.scanline
+                    sl.is_wait = True
+                    continue
                 mIns = re.match(r"^([A-Za-z]{3})\b(.*)$", st)
                 if not mIns:
                     sl.flags.append(("WARN", f"unparsed statement '{st}'"))

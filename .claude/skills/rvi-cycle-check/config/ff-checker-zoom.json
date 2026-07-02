@@ -1,0 +1,33 @@
+{
+  "file": "C:/Users/khcon/OneDrive/BEEB/Repos/funky-fresh/src/fx-checker-zoom.asm",
+  "function": "fx_checker_zoom_draw",
+  "end_label": "fx_checker_zoom_vram_table_LO",
+  "entry_phase": 0,
+  "scanline_cycles": 128,
+  "trace_execution": true,
+  "annotation_format": "increment",
+  "page_align_macros": ["PAGE_ALIGN"],
+  "page_aligned_symbols": [],
+  "extra_zp_symbols": ["checker_y1", "checker_y2", "checker_y3", "temp", "row_count", "prev_scanline"],
+  "symbols": {
+    "screen_base_addr": 12288,
+    "FALSE": 0,
+    "TRUE": 1
+  },
+  "_comment_vertical": "row_count=119 (update); no inc and no mid-loop entry -> 119 dec/beq passes, last is the beq-exit partial, leaving 118 full 2-scanline iterations. setup = scanline -2 (WAIT_SCANLINES 1) + scanline -1 = 2. tail from final R4=36/R9=1 -> 74, vsync R7=17.",
+  "vertical": {
+    "frame_lines": 312,
+    "target_vsync_pal_line": 272,
+    "setup_scanlines": 2,
+    "loop_iterations": 118,
+    "loop_scanlines_each": 2
+  },
+  "register_constraints": {
+    "0":  { "before_row_end": true, "note": "Horizontal total-1 (scanline length) -- RVI." },
+    "4":  { "before_row_end": true, "note": "Vertical total-1 (rows)." },
+    "7":  { "before_row_end": true, "note": "Vertical sync position (rows)." },
+    "9":  { "before_row_end": true, "note": "Scanlines per row -1." },
+    "12": { "before_row_end": true, "note": "Screen start address high." },
+    "13": { "before_row_end": true, "note": "Screen start address low." }
+  }
+}
