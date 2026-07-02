@@ -19,8 +19,8 @@ and hopefully it's not too tedious.
 
 ## repack
 
-With average iteration time in mind: zx02tool always runs zx02 in
-non-optimal mode, as that's so much quicker. But, as a manual step,
+With average iteration time in mind, zx02tool runs zx02 in non-optimal
+mode by default, as that's so much quicker. But, as a manual step,
 zx02tool can repack all the files in its cache in zx02 optimal mode,
 which it can do as a multi-core process.
 
@@ -30,6 +30,11 @@ uses will pick up the now optimally-compressed version of the file.
 The expected workflow is that you'll do a repack when you have a spare
 moment, but we might have to tweak this if/when disk space becomes
 tight enough that non-optimal compression just ain't enough.
+
+## force optimal mode
+
+For files that are known to change very rarely (or less), you can
+supply `--optimal` to have zx02tool always pack in optimal mode.
 
 ## zx02tool is entirely optional
 
