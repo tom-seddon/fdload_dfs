@@ -1,0 +1,68 @@
+{
+  "file": "C:/Users/khcon/OneDrive/BEEB/Repos/funky-fresh/src/fx-vertical-stretch.asm",
+  "function": "fx_vertical_stretch_draw",
+  "end_label": "fx_stretch_vram_table_LO",
+  "entry_phase": 0,
+  "scanline_cycles": 128,
+  "trace_execution": true,
+  "page_align_macros": [
+    "PAGE_ALIGN"
+  ],
+  "page_aligned_symbols": [],
+  "subroutine_cycles": {},
+  "extra_zp_symbols": [
+    "v",
+    "dv",
+    "row_count",
+    "prev_scanline",
+    "next_scanline",
+    "product",
+    "temp",
+    "num1",
+    "num2",
+    "readptr",
+    "teletext_enable",
+    "teletext_disable",
+    "zoom",
+    "char_off"
+  ],
+  "symbols": {
+    "screen_base_addr": 12288,
+    "_FX_VERT_STRETCH_REMOVE_RVI": 0,
+    "_FX_VERT_STRETCH_SCR_ADDR": 12288,
+    "FALSE": 0,
+    "TRUE": 1
+  },
+  "vertical": null,
+  "register_constraints": {
+    "0": {
+      "before_row_end": true,
+      "note": "Horizontal total-1 (scanline length) -- RVI."
+    },
+    "4": {
+      "before_row_end": true,
+      "note": "Vertical total-1 (rows)."
+    },
+    "6": {
+      "before_row_end": true,
+      "note": "Vertical displayed (rows)."
+    },
+    "7": {
+      "before_row_end": true,
+      "note": "Vertical sync position (rows)."
+    },
+    "9": {
+      "before_row_end": true,
+      "note": "Scanlines per row -1."
+    },
+    "12": {
+      "before_row_end": true,
+      "note": "Screen start address high."
+    },
+    "13": {
+      "before_row_end": true,
+      "note": "Screen start address low."
+    }
+  },
+  "annotation_format": "increment"
+}

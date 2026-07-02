@@ -426,6 +426,38 @@ cumulative count, which those extra loops break.
   `SMILEY_DEBUG_RASTERS=FALSE` the debug arm must not be counted). Display loop
   is 127c (−1c/scanline soft drift).
 
+## Control-flow tracing mode (`"trace_execution": true`)
+
+For horizontal-RVI effects whose scanlines are stitched together with jumps
+(jmp-into-loop, out-of-line computed SMC dispatch) the naive linear walk
+mis-tracks the running total. Opt into an **execution-order trace** that follows
+control flow: unconditional `jmp/bra` (incl. a `.label JMP target` computed
+dispatch — a representative target is followed), traces exactly one pass of a
+counted loop via a visited-set, then resumes on the loop-exit path with the
+branch-taken cum. Per-line costs come from the same helpers, so numbers match;
+only the *path* differs. Also handles BeebAsm scope-prefixed labels `.*name` /
+`.^name`.
+
+The corpus's **`; +N (cum)`** annotation style (per-line increment + inline
+running total) is supported via `"annotation_format": "increment"`: the tool
+compares each instruction's `+N` to the computed cost and each `(cum)` to the
+computed running total (mod scanline), flagging mismatches. Because authors
+often *group* two source lines' cycles onto one `+N` at a label split, the
+per-line `+N` is advisory in this mode and the **running total `(cum)` is the
+authoritative check**.
+
+- **funky-fresh / fx-vertical-stretch** (`funky-fresh`, BeebAsm) — the first
+  effect of this corpus and the motivator for trace mode. Variable-R0 horizontal
+  RVI vertical stretch: reprograms R0 (scanline length) / R9 per scanline via a
+  jmptab-driven computed `JMP scanlineN`, entered mid-loop by `jmp right_in_there`.
+  The trace reproduces the author's `(cum)` across the whole path (setup →
+  dispatch → loop @ HCC=19 → tail @ HCC=17 → rts) and found a real bug: the
+  running totals on lines 216–218 read `47/49/54` but should be `49/51/56`
+  (self-corrected at line 221). `_FX_VERT_STRETCH_REMOVE_RVI=FALSE` makes the
+  teletext `IF/ELSE` arms compile to `WAIT_CYCLES`, handled by conditional-asm
+  eval. The 312-line PAL frame (variable-R0 + data-dependent `row_count` trip
+  count) is not yet modelled — see below.
+
 ## Known limitations / not yet done
 
 - **Multi-loop fixed-duration effects** (e.g. vblinds) are not summed for

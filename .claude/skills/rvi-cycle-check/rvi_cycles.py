@@ -335,6 +335,7 @@ class Analyser:
                                    for c in self.reg_constraints.values())
         self.func = cfg.get("function", "fx_draw_function")
         self.end_label = cfg.get("end_label")
+        self.ann_format = cfg.get("annotation_format", "cycles")
         self.origin = cfg.get("origin", None)
         self.page_aligned = set(cfg.get("page_aligned_symbols", []))
         self.page_align_macros = set(cfg.get("page_align_macros", []))
@@ -399,7 +400,7 @@ class Analyser:
             if s in self.page_align_macros:        # e.g. PAGE_ALIGN == ALIGN &100
                 prev_align256 = True
                 continue
-            mAnyLbl = re.match(r"^\.([A-Za-z_][A-Za-z0-9_]*)\b", s)
+            mAnyLbl = re.match(r"^\.[\*\^]?([A-Za-z_][A-Za-z0-9_]*)\b", s)
             if mAnyLbl and prev_align256:
                 self.page_aligned.add(mAnyLbl.group(1))
             if not mAnyLbl:
@@ -416,7 +417,7 @@ class Analyser:
                 # GUARD sets an assembly limit; it does NOT end the ORG region.
                 continue
             if in_zp:
-                mLbl = re.match(r"^\.([A-Za-z_][A-Za-z0-9_]*)\b", s)
+                mLbl = re.match(r"^\.[\*\^]?([A-Za-z_][A-Za-z0-9_]*)\b", s)
                 if mLbl:
                     self.zp_symbols.add(mLbl.group(1))
             # NAME = expr  (constants)
@@ -462,6 +463,10 @@ class Analyser:
 
     def analyse(self):
         start, end = self.extract_function()
+        self.func_range = (start, end)
+        if self.cfg.get("trace_execution"):
+            self.active_mask = self._compute_active_mask()
+            return self._trace_walk(start, end)
         cum = self.entry_phase
         pc = 0  # byte offset from function start
         if self.origin is not None:
@@ -614,7 +619,7 @@ class Analyser:
                     continue   # anonymous-block delimiters: zero cost
                 # label
                 if st.startswith("."):
-                    mLbl = re.match(r"^\.([A-Za-z_][A-Za-z0-9_]*)", st)
+                    mLbl = re.match(r"^\.[\*\^]?([A-Za-z_][A-Za-z0-9_]*)", st)
                     if mLbl:
                         self.label_cum[mLbl.group(1)] = cum
                         self.label_pc[mLbl.group(1)] = pc
@@ -727,10 +732,165 @@ class Analyser:
         self._post_checks()
         return src_lines
 
+    def _trace_walk(self, start, end):
+        """Execution-order walk that FOLLOWS control flow (opt-in via
+        `trace_execution`).  Unlike the linear walk, it follows unconditional
+        jmp/bra and computed SMC dispatch (`JMP target`), traces exactly one
+        pass of a counted loop (via a visited-set), and then resumes on the
+        loop-exit path so cumulative cycles are correct along the REAL path.
+
+        This suits horizontal-RVI effects whose scanlines are stitched together
+        with jumps (jmp-into-loop, out-of-line dispatch), where the naive linear
+        walk mis-tracks the running total.  Costs come from the same
+        classify/_cost_with_stretch helpers, so per-line numbers match.
+
+        Control-flow rules:
+          * jmp/bra LABEL          -> follow to LABEL (unconditional).
+          * .lbl JMP target        -> computed SMC dispatch: follow `target`
+                                       (a representative path; alternates are
+                                       equal by construction and checked apart).
+          * Bcc LABEL              -> counted as NOT-taken (loop-continue, 2c);
+                                       remember (LABEL, cum+3) as the exit path.
+          * revisit a line         -> loop closed: resume at the remembered
+                                       exit path with its taken-cum, else stop.
+          * rts/rti                -> stop.
+        """
+        cum = self.entry_phase
+        pc = self.origin if self.origin is not None else 0
+        last_imm = None
+        selected_reg = None
+        src_lines = []
+        visited = set()
+        loop_exit = None       # (target_idx, taken_cum) for the pending loop exit
+        self.loops = []
+        idx = start
+        steps = 0
+        while start <= idx < end and steps < 200000:
+            steps += 1
+            if idx in visited:
+                if loop_exit is not None and loop_exit[0] not in visited:
+                    idx, cum = loop_exit
+                    loop_exit = None
+                    continue
+                break
+            visited.add(idx)
+            sl = SrcLine(idx + 1, self.lines[idx])
+            src_lines.append(sl)
+            sl.cum_before = cum
+            sl.cum_after = cum
+            if not self.active_mask[idx]:
+                sl.inactive = True
+                idx += 1
+                continue
+            next_idx = idx + 1
+            stop = False
+            for raw_stmt in split_statements(sl.code):
+                st = raw_stmt.strip()
+                if st == "" or st in ("{", "}", "\\{", "\\}"):
+                    continue
+                if st.startswith("."):
+                    m = re.match(r"^\.[\*\^]?([A-Za-z_][A-Za-z0-9_]*)", st)
+                    st = st[m.end():].strip() if m else ""
+                    if st == "":
+                        continue
+                if re.match(r"(?i)^(IF|ELIF|ELSE|ENDIF|ERROR|PRINT|ALIGN|EQU[BWDS]|"
+                            r"SKIP|MACRO|ENDMACRO|FOR|NEXT|ORG|GUARD|CHECK_SAME_PAGE_AS|"
+                            r"PAGE_ALIGN\w*|CODE_ALIGN)\b", st):
+                    self._inspect_directive(st, sl)
+                    continue
+                mWait = re.match(r"(?i)^WAIT_CYCLES\s+(.+)$", st)
+                if mWait:
+                    try:
+                        n = eval_expr(mWait.group(1), self.symbols)
+                    except CostError as e:
+                        sl.flags.append(("ERROR", f"WAIT_CYCLES arg: {e}"))
+                        n = 0
+                    cum += n
+                    sl.line_cost += n
+                    sl.is_wait = True
+                    continue
+                mIns = re.match(r"^([A-Za-z]{3})\b(.*)$", st)
+                if not mIns:
+                    sl.flags.append(("WARN", f"unparsed statement '{st}'"))
+                    continue
+                mnem = mIns.group(1).lower()
+                operand = mIns.group(2).strip()
+                if mnem == "lda" and operand.startswith("#"):
+                    try:
+                        last_imm = eval_expr(operand[1:], self.symbols)
+                    except CostError:
+                        last_imm = None
+
+                # control flow
+                if mnem in ("jmp", "bra") or mnem in BRANCHES:
+                    mt = re.match(r"^([A-Za-z_][A-Za-z0-9_]*)", operand)
+                    tgt_line = (self._find_label_line(mt.group(1), 0, len(self.lines))
+                                if mt else None)
+                    sl.has_instr = True
+                    if mnem in ("jmp", "bra"):
+                        cum += 3
+                        sl.line_cost += 3
+                        if tgt_line is not None:
+                            if tgt_line in visited and tgt_line <= idx:
+                                # backward edge to a visited line = loop-back; record it
+                                self.loops.append({"label": mt.group(1),
+                                                   "label_cum": self.label_cum.get(mt.group(1), 0),
+                                                   "iter_len": None, "lineno": sl.lineno})
+                            next_idx = tgt_line
+                    else:
+                        # conditional: trace the not-taken (continue) path (2c);
+                        # remember the taken path (3c) as the loop exit.
+                        cum += 2
+                        sl.line_cost += 2
+                        if tgt_line is not None:
+                            loop_exit = (tgt_line, cum + 1)   # taken would be +3 not +2
+                    continue
+
+                if mnem in ("rts", "rti"):
+                    sl.has_instr = True
+                    cum += 6
+                    sl.line_cost += 6
+                    stop = True
+                    continue
+
+                try:
+                    mode, base, addr = classify(mnem, operand, self.symbols, self.zp_symbols)
+                except CostError as e:
+                    sl.flags.append(("ERROR", f"{st}: {e}"))
+                    continue
+                sl.has_instr = True
+                self._check_page_cross(mnem, mode, operand, sl)
+                cost, note, bytelen = self._cost_with_stretch(
+                    mnem, mode, base, addr, operand, cum, pc)
+                cum += cost
+                pc += bytelen
+                sl.line_cost += cost
+                if note.startswith("stretched(+1)"):
+                    sl.odd_stretch = True
+                stretched_addr = addr if addr is not None else self._sym_addr(operand)
+                if mnem in ("sta", "stz") and stretched_addr == 0xFE00:
+                    selected_reg = 0 if mnem == "stz" else last_imm
+                elif mnem in ("sta", "stz") and stretched_addr == 0xFE01:
+                    val = 0 if mnem == "stz" else last_imm
+                    self._record_reg_write(selected_reg, val, cum, sl)
+            sl.cum_after = cum
+            if stop:
+                if loop_exit is not None and loop_exit[0] not in visited:
+                    idx, cum = loop_exit
+                    loop_exit = None
+                    continue
+                break
+            idx = next_idx
+        self.total_cum = cum
+        self.src_lines = src_lines
+        self._post_checks()
+        return src_lines
+
     def _find_label_line(self, name, lo, hi):
-        """Index of the line defining `.name` within [lo, hi), or None."""
+        """Index of the line defining `.name` within [lo, hi), or None.
+        Accepts BeebAsm scope-prefixed definitions `.*name` / `.^name` too."""
         for i in range(lo, hi):
-            if re.match(r"^\.%s\b" % re.escape(name), self.lines[i].strip()):
+            if re.match(r"^\.[\*\^]?%s\b" % re.escape(name), self.lines[i].strip()):
                 return i
         return None
 
@@ -829,7 +989,7 @@ class Analyser:
                 if st == "" or st in ("{", "}", "\\{", "\\}"):
                     continue
                 if st.startswith("."):
-                    ml = re.match(r"^\.[A-Za-z_]\w*", st)
+                    ml = re.match(r"^\.[\*\^]?[A-Za-z_]\w*", st)
                     st = st[ml.end():].strip() if ml else ""
                     if st == "":
                         continue
@@ -941,7 +1101,7 @@ class Analyser:
                 if st == "" or st in ("{", "}", "\\{", "\\}"):
                     continue
                 if st.startswith("."):
-                    ml = re.match(r"^\.[A-Za-z_]\w*", st)
+                    ml = re.match(r"^\.[\*\^]?[A-Za-z_]\w*", st)
                     st = st[ml.end():].strip() if ml else ""
                     if st == "":
                         continue
@@ -1175,7 +1335,7 @@ class Analyser:
             stmt = None
             for st in split_statements(split_comment(raw)[0]):
                 s = st.strip()
-                ml = re.match(r"^\.[A-Za-z_]\w*\s*", s)   # drop a leading label
+                ml = re.match(r"^\.[\*\^]?[A-Za-z_]\w*\s*", s)   # drop a leading label
                 if ml:
                     s = s[ml.end():].strip()
                 if s:
@@ -1360,19 +1520,25 @@ class Analyser:
 PERLINE_RE = re.compile(r";\s*(\d+)\s*c\b", re.IGNORECASE)
 RUNNING_RE = re.compile(r"<==\s*(\d+)\s*c(?:\s*/\s*0c)?", re.IGNORECASE)
 
+# Alternative "increment" annotation style used by some corpora (funky-fresh):
+#   `; +7 (10)`  == this instruction is +7 cycles, running total within the
+# scanline is 10.  Opt in with config "annotation_format": "increment".
+FF_PERLINE_RE = re.compile(r";\s*\+(\d+)\b")
+FF_RUNNING_RE = re.compile(r"\((\d+)\)")
+
 # Marker noting a stretched access that cost only +1c (began on an odd cycle, so
 # the usual +2 stretch was reduced to +1). Phase-sensitive - worth calling out.
 ODD_MARK = " (odd stretch +1)"
 ODD_MARK_RE = re.compile(r"\s*\(odd stretch \+1\)")
 
 
-def existing_perline(comment):
-    m = PERLINE_RE.search(comment)
+def existing_perline(comment, fmt="cycles"):
+    m = (FF_PERLINE_RE if fmt == "increment" else PERLINE_RE).search(comment)
     return int(m.group(1)) if m else None
 
 
-def existing_running(comment):
-    m = RUNNING_RE.search(comment)
+def existing_running(comment, fmt="cycles"):
+    m = (FF_RUNNING_RE if fmt == "increment" else RUNNING_RE).search(comment)
     return int(m.group(1)) if m else None
 
 
@@ -1394,13 +1560,24 @@ def build_report(an):
     for sl in an.src_lines:
         if sl.line_cost == 0 and not sl.flags and not sl.code.strip():
             continue
-        ann = existing_perline(sl.comment)
-        run_ann = existing_running(sl.comment)
+        # inactive (false IF/ELSE branch): keep its own annotations out of the
+        # comparison -- they describe the OTHER build variant, not this one.
+        ann = None if sl.inactive else existing_perline(sl.comment, an.ann_format)
+        run_ann = None if sl.inactive else existing_running(sl.comment, an.ann_format)
         mark = ""
         if sl.odd_stretch:
             mark += "  [odd stretch +1]"
         if ann is not None and ann != sl.line_cost:
-            mark += f" <-- annotated {ann}c, true {sl.line_cost}c (will fix; barriers unaffected)"
+            # In "increment" style the per-line `+N` is often grouped across a
+            # label/comment split (author sums two source lines onto one), so a
+            # per-line mismatch alone is not authoritative -- the running total
+            # is. Only call it out when the running total at this line is also
+            # absent or wrong (i.e. the discrepancy actually propagates).
+            cum_ok = (run_ann is not None
+                      and (run_ann == sl.cum_after % an.scanline
+                           or (run_ann == an.scanline and sl.cum_after % an.scanline == 0)))
+            if an.ann_format != "increment" or not cum_ok:
+                mark += f" <-- annotated {ann}c, true {sl.line_cost}c (will fix; barriers unaffected)"
         cumstr = render_running(sl.cum_after, an.scanline)
         anns = str(ann) if ann is not None else "-"
         srctxt = sl.code.strip()
