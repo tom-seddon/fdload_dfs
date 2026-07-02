@@ -453,10 +453,24 @@ authoritative check**.
   The trace reproduces the author's `(cum)` across the whole path (setup →
   dispatch → loop @ HCC=19 → tail @ HCC=17 → rts) and found a real bug: the
   running totals on lines 216–218 read `47/49/54` but should be `49/51/56`
-  (self-corrected at line 221). `_FX_VERT_STRETCH_REMOVE_RVI=FALSE` makes the
-  teletext `IF/ELSE` arms compile to `WAIT_CYCLES`, handled by conditional-asm
-  eval. The 312-line PAL frame (variable-R0 + data-dependent `row_count` trip
-  count) is not yet modelled — see below.
+  (self-corrected at line 221), plus a `+9` per-line typo at line 232 where the
+  cumulative `(98)` is nonetheless right. `_FX_VERT_STRETCH_REMOVE_RVI=FALSE`
+  makes the teletext `IF/ELSE` arms compile to `WAIT_CYCLES`, handled by
+  conditional-asm eval. **Frame validated**: `trace_frame_check` confirms
+  312 lines (setup 2 + loop 118×2 + free-run tail (R4+1)×(R9+1)=74) and vsync at
+  PAL line 272 (visible 238 + R7=17 × 2). The trip count (118) is config-supplied
+  because `row_count` is set in the update function, out of the draw's sight.
+
+### Trace-mode frame check (`trace_frame_check`)
+
+For a traced RVI effect, set a `vertical` block with `frame_lines`,
+`target_vsync_pal_line`, `setup_scanlines`, `loop_iterations`,
+`loop_scanlines_each`. The visible region is code-driven and cycle-exact
+(validated per-line by the trace); the tail is CRTC free-run from the FINAL
+latched R4/R9 ((R4+1)×(R9+1) scanlines) with vsync at row R7. The tool checks
+`setup + iters×each + tail == frame_lines` and the vsync line. `setup_scanlines`
+and `loop_iterations` are config-supplied because the trip count is often
+data-dependent (set outside the draw).
 
 ## Known limitations / not yet done
 

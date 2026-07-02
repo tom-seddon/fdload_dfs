@@ -1549,6 +1549,68 @@ def render_running(cum, scanline):
     return f"{v}c"
 
 
+def trace_frame_check(an, vcfg):
+    """PAL-frame closure check for a traced horizontal-RVI effect.
+
+    The visible region is code-driven and cycle-exact (validated per-line by the
+    trace): setup + loop_iterations x loop_scanlines_each scanlines.  The tail is
+    then CRTC free-run from the FINAL register values latched by the draw code:
+    (R4+1) rows x (R9+1) scanlines/row, with vsync at row R7.  We check the whole
+    thing sums to frame_lines and vsync lands on target.
+
+    setup_scanlines and loop_iterations are config-supplied because the trip
+    count is data-dependent (e.g. row_count is set in the update function, not
+    the draw); the trace can't see it.  Everything else is taken from the trace's
+    final CRTC writes."""
+    F, S = [], []
+    frame = vcfg.get("frame_lines", 312)
+    target_vsync = vcfg.get("target_vsync_pal_line")
+    setup = vcfg.get("setup_scanlines", 0)
+    iters = vcfg.get("loop_iterations")
+    loop_each = vcfg.get("loop_scanlines_each", 2)
+
+    final = {}
+    for rw in an.reg_writes:
+        if rw["reg"] is not None:
+            final[rw["reg"]] = rw["val"]
+    R4, R9, R7 = final.get(4), final.get(9), final.get(7)
+
+    S.append(f"setup                : {setup} scanline(s)")
+    if iters is not None:
+        S.append(f"loop                 : {iters} x {loop_each} = {iters * loop_each} scanline(s)")
+    else:
+        S.append("loop                 : loop_iterations not set in config (data-dependent)")
+    S.append(f"final tail regs      : R4={R4} R7={R7} R9={R9}")
+
+    if None in (R4, R9):
+        F.append(("ASK", "final R4/R9 not both seen -- cannot compute the free-run tail"))
+        return F, S
+    tail_spr = R9 + 1
+    tail = (R4 + 1) * tail_spr
+    S.append(f"tail free-run        : (R4+1)*(R9+1) = ({R4}+1)*({R9}+1) = {tail} scanline(s)")
+
+    if iters is None:
+        F.append(("ASK", "set vertical.loop_iterations (trip count) to check the frame total"))
+        return F, S
+    visible = setup + iters * loop_each
+    total = visible + tail
+    S.append(f"visible              : {visible} scanline(s)")
+    S.append(f"frame total          : {visible} + {tail} = {total}")
+    if total == frame:
+        F.append(("OK", f"frame total = {total} lines == {frame}"))
+    else:
+        F.append(("ERROR", f"frame total = {total} lines != {frame} "
+                           f"(off by {total - frame})"))
+    if target_vsync is not None and R7 is not None:
+        vsync = visible + R7 * tail_spr
+        S.append(f"vsync                : visible {visible} + R7({R7})*{tail_spr} = PAL line {vsync}")
+        if vsync == target_vsync:
+            F.append(("OK", f"single vsync at PAL line {vsync} == target {target_vsync}"))
+        else:
+            F.append(("ERROR", f"vsync at PAL line {vsync} != target {target_vsync}"))
+    return F, S
+
+
 def build_report(an):
     out = []
     out.append(f"# RVI cycle analysis: .{an.func}")
@@ -1877,7 +1939,15 @@ def main():
     vann = {}
     vbound = {}
     summary = None
-    if cfg.get("vertical"):
+    if cfg.get("vertical") and cfg.get("trace_execution"):
+        vF, vS = trace_frame_check(an, cfg["vertical"])
+        print("\n## PAL frame (traced RVI)")
+        for line in vS:
+            print(f"  {line}")
+        print("\n## Frame validation")
+        for sev, msg in vF:
+            print(f"  [{sev}] {msg}")
+    elif cfg.get("vertical"):
         from crtc_vertical import analyse_vertical, build_effect_summary
         vF, vann, vS, vbound = analyse_vertical(an, cfg["vertical"])
         print("\n## Vertical (PAL frame) structure")

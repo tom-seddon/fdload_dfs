@@ -33,7 +33,14 @@
     "FALSE": 0,
     "TRUE": 1
   },
-  "vertical": null,
+  "_comment_vertical": "Trace-mode frame check. row_count is set to 119 in fx_vertical_stretch_update, inc'd to 120 in draw; the dec/beq loop runs 120 passes, of which 2 are the partial boundary passes (entered via jmp right_in_there, and the final beq-exit pass), leaving 118 full 2-scanline iterations. setup = scanline -2 and -1 = 2. tail free-run comes from the final R4=36/R9=1 -> 74, vsync from R7=17.",
+  "vertical": {
+    "frame_lines": 312,
+    "target_vsync_pal_line": 272,
+    "setup_scanlines": 2,
+    "loop_iterations": 118,
+    "loop_scanlines_each": 2
+  },
   "register_constraints": {
     "0": {
       "before_row_end": true,
