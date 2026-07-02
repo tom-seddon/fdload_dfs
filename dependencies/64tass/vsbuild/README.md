@@ -1,9 +1,10 @@
 Quick CMake setup for building 64tass with VS2022. The debugger is
 pretty convenient.
 
-1. `make init_vs2022`
+1. `make init_vs2022` from this folder
 
-2. Load `..\..\build\build.tass64\vs2022\64tass.sln` into VS2022
+2. Load (relative to root of working copy)
+   `build.tass64\vs2022\64tass.sln` into VS2022
 
 3. Compile
 

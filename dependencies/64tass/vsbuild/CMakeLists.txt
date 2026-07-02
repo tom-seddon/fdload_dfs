@@ -165,7 +165,7 @@ target_sources(64tass PRIVATE
   ${TASS_PATH}/wchar.c
   ${TASS_PATH}/wchar.h)
 target_sources(64tass PRIVATE
-  ${CMAKE_CURRENT_LIST_DIR}/.editorconfig)
+  ${CMAKE_CURRENT_LIST_DIR}/../.editorconfig)
 target_compile_definitions(64tass PRIVATE
   _CRT_SECURE_NO_WARNINGS
   _CRT_NONSTDC_NO_WARNINGS)
