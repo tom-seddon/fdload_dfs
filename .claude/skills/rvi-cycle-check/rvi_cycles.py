@@ -768,6 +768,7 @@ class Analyser:
         src_lines = []
         visited = set()
         loop_exit = None       # (target_idx, taken_cum) for the pending loop exit
+        trace_for = []         # FOR..NEXT frames: [cum_at_for, iterations]
         self.loops = []
         idx = start
         steps = 0
@@ -788,6 +789,25 @@ class Analyser:
                 sl.inactive = True
                 idx += 1
                 continue
+
+            # FOR..NEXT is assembler-unrolled. Trace the body ONCE (so per-line
+            # costs match a per-iteration annotation) but advance the running
+            # total by all iterations. Assumes a phase-independent body (true for
+            # the funky-fresh colour-stripe FORs -- &FE2x writes aren't stretched).
+            strip0 = sl.code.strip()
+            mFor = re.match(r"(?i)^FOR\s+\w+\s*,(.+)$", strip0)
+            if mFor and ":" not in sl.code:
+                trace_for.append([cum, self._for_iter_count(mFor.group(1))])
+                idx += 1
+                continue
+            if re.match(r"(?i)^NEXT\b", strip0) and ":" not in sl.code and trace_for:
+                cum_at_for, iters = trace_for.pop()
+                if iters > 1:
+                    cum += (iters - 1) * (cum - cum_at_for)
+                sl.cum_after = cum
+                idx += 1
+                continue
+
             next_idx = idx + 1
             stop = False
             for raw_stmt in split_statements(sl.code):

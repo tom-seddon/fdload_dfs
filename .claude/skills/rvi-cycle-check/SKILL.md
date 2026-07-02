@@ -492,6 +492,14 @@ authoritative check**.
   per-line costs (the author's own inline corrections — the `<= Mc` value is the
   right, odd-stretch one).
 
+- **funky-fresh / fx-frequency** (`funky-fresh`, BeebAsm) — a spectrum-bar effect
+  with a **static** 312-line frame (R4=38/R9=7 → 39×8=312, vsync R7=34→272), not a
+  rupture; the RVI is per-row palette (`&FE2x`) changes only. The frame check's
+  tail-from-final-regs handles it directly (setup=0, loop=0). Uses `FOR/NEXT`
+  colour-stripe loops annotated per-iteration inside a `jmp`-based `row_loop`;
+  motivated trace-walker FOR handling (trace the body once for per-line display,
+  advance the running total by all iterations). Validated clean (312, vsync 272).
+
 ### Trace-mode frame check (`trace_frame_check`)
 
 For a traced RVI effect, set a `vertical` block with `frame_lines`,

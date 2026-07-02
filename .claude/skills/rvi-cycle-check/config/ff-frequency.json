@@ -1,0 +1,34 @@
+{
+  "file": "C:/Users/khcon/OneDrive/BEEB/Repos/funky-fresh/src/fx-frequency.asm",
+  "function": "fx_frequency_draw",
+  "end_label": "vgc_reg_copy",
+  "entry_phase": 0,
+  "scanline_cycles": 128,
+  "trace_execution": true,
+  "annotation_format": "cycles",
+  "page_align_macros": ["PAGE_ALIGN"],
+  "page_aligned_symbols": ["vgc_freq_array"],
+  "extra_zp_symbols": ["prev_scanline"],
+  "symbols": {
+    "screen_base_addr": 12288,
+    "FX_FREQ_MAX": 64,
+    "FX_FREQ_ROWS": 8,
+    "FX_FREQ_COLS": 8,
+    "PAL_black": 7,
+    "FALSE": 0,
+    "TRUE": 1
+  },
+  "_comment_vertical": "Static 312-line frame: the draw sets R4=38 (39 rows) x R9=7 (8 scanlines/row) = 312, vsync R7=34 (34*8=272). Not a rupture -- the RVI here is per-row palette changes only. So the frame comes entirely from the final CRTC regs (setup=0, loop=0).",
+  "vertical": {
+    "frame_lines": 312,
+    "target_vsync_pal_line": 272,
+    "setup_scanlines": 0,
+    "loop_iterations": 0,
+    "loop_scanlines_each": 8
+  },
+  "register_constraints": {
+    "4":  { "before_row_end": true, "note": "Vertical total-1 (rows)." },
+    "7":  { "before_row_end": true, "note": "Vertical sync position (rows)." },
+    "9":  { "before_row_end": true, "note": "Scanlines per row -1." }
+  }
+}
