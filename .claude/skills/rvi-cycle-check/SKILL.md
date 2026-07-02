@@ -482,6 +482,16 @@ authoritative check**.
   cycle-exact); the small `twister_quadrant_colour_*` tables are not aligned but
   are indexed 0–3 (bounded, low cross risk).
 
+- **funky-fresh / fx-frak-zoomer** (`funky-fresh`, BeebAsm) — a texture zoomer,
+  no computed dispatch (inline R0 tricks). Uses the `; Nc` (not `+N (cum)`)
+  annotation style, a `jsr frak_line0` (60c generated palette code, via
+  `subroutine_cycles`) with a self-modified target, a balanced `bcc/jmp` diamond,
+  and a `dec/bne` loop-back. Motivated trace-walker JSR handling and treating a
+  BACKWARD conditional branch as taken (3c, the loop-back cost) vs a forward one
+  as the not-taken exit. Frame validates (312, vsync 272); fixed 4 stale `Nc <= Mc`
+  per-line costs (the author's own inline corrections — the `<= Mc` value is the
+  right, odd-stretch one).
+
 ### Trace-mode frame check (`trace_frame_check`)
 
 For a traced RVI effect, set a `vertical` block with `frame_lines`,

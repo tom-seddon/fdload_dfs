@@ -850,6 +850,21 @@ class Analyser:
                     except CostError:
                         last_imm = None
 
+                # JSR: charge the whole call (configured cost or inline-walk),
+                # then continue to the next line (RTS returns here).
+                if mnem == "jsr":
+                    msub = re.match(r"^([A-Za-z_]\w*)", operand)
+                    cc = self._call_cost(msub.group(1), cum) if msub else None
+                    sl.has_instr = True
+                    if cc is not None:
+                        cost, note = cc
+                        cum += cost
+                        sl.line_cost += cost
+                    else:
+                        cum += 6
+                        sl.line_cost += 6
+                    continue
+
                 # control flow
                 if mnem in ("jmp", "bra") or mnem in BRANCHES:
                     mt = re.match(r"^([A-Za-z_][A-Za-z0-9_]*)", operand)
@@ -867,12 +882,21 @@ class Analyser:
                                                    "iter_len": None, "lineno": sl.lineno})
                             next_idx = tgt_line
                     else:
-                        # conditional: trace the not-taken (continue) path (2c);
-                        # remember the taken path (3c) as the loop exit.
-                        cum += 2
-                        sl.line_cost += 2
-                        if tgt_line is not None:
-                            loop_exit = (tgt_line, cum + 1)   # taken would be +3 not +2
+                        # conditional branch. A BACKWARD target is a loop-back
+                        # (`dec c / bne loop`): taken 3c in the steady state, and
+                        # we've already traced one iteration so we fall through to
+                        # the exit. A FORWARD target is a skip/exit: trace the
+                        # not-taken (fall-through) path at 2c and remember the
+                        # taken path (3c) as the loop exit for a jmp-back loop.
+                        backward = tgt_line is not None and tgt_line <= idx
+                        if backward:
+                            cum += 3
+                            sl.line_cost += 3
+                        else:
+                            cum += 2
+                            sl.line_cost += 2
+                            if tgt_line is not None:
+                                loop_exit = (tgt_line, cum + 1)   # taken would be +3
                     continue
 
                 if mnem in ("rts", "rti"):

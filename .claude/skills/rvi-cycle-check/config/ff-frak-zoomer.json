@@ -1,0 +1,35 @@
+{
+  "file": "C:/Users/khcon/OneDrive/BEEB/Repos/funky-fresh/src/fx-frak-zoomer.asm",
+  "function": "fx_frak_zoomer_draw",
+  "end_label": "fx_zoom_dv_table",
+  "entry_phase": 0,
+  "scanline_cycles": 128,
+  "trace_execution": true,
+  "annotation_format": "cycles",
+  "page_align_macros": ["PAGE_ALIGN"],
+  "page_aligned_symbols": ["frak_lines_LO", "frak_lines_HI", "fx_zoom_crtc_addresses"],
+  "subroutine_cycles": { "frak_line0": 60 },
+  "extra_zp_symbols": ["v", "prev_scanline", "next_scanline", "zoom", "char_off", "row_count"],
+  "symbols": {
+    "screen_base_addr": 12288,
+    "FRAK_SPRITE_HEIGHT": 43,
+    "FRAK_MAX_ZOOM": 55,
+    "FALSE": 0,
+    "TRUE": 1
+  },
+  "vertical": {
+    "frame_lines": 312,
+    "target_vsync_pal_line": 272,
+    "setup_scanlines": 2,
+    "loop_iterations": 118,
+    "loop_scanlines_each": 2
+  },
+  "register_constraints": {
+    "0":  { "before_row_end": true, "note": "Horizontal total-1 (scanline length) -- RVI." },
+    "4":  { "before_row_end": true, "note": "Vertical total-1 (rows)." },
+    "7":  { "before_row_end": true, "note": "Vertical sync position (rows)." },
+    "9":  { "before_row_end": true, "note": "Scanlines per row -1." },
+    "12": { "before_row_end": true, "note": "Screen start address high." },
+    "13": { "before_row_end": true, "note": "Screen start address low." }
+  }
+}
