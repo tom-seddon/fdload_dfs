@@ -134,7 +134,7 @@ ifneq ($(UNAME),Windows_NT)
 	test -f "$(BEEBASM_EXE)" || (cd "dependencies/beebasm/src" && $(MAKE) code VERBOSE=$(VERBOSE) && cp "../beebasm" "$(BEEBASM_EXE)")
 
 # Build 64tass if required.
-	test -f "$(TASS_EXE)" || (cd "dependencies/tass64-code.r3243" && $(MAKE) 64tass && cp "64tass" "$(TASS_EXE)")
+	test -f "$(TASS_EXE)" || (cd "dependencies/64tass/tass64-code.r3243" && $(MAKE) 64tass && cp "64tass" "$(TASS_EXE)")
 endif
 
 ##########################################################################
@@ -147,7 +147,7 @@ ifneq ($(UNAME),Windows_NT)
 	rm -f "$(ZX02_EXE)"
 	cd "dependencies/beebasm/src" && $(RECENT_GNU_MAKE) clean VERBOSE=$(VERBOSE)
 	rm -f "$(BEEBASM_EXE)"
-	cd "dependencies/tass64-code.r3243" && $(MAKE) clean
+	cd "dependencies/64tass/tass64-code.r3243" && $(MAKE) clean
 	rm -f "$(TASS_EXE)"
 endif
 
