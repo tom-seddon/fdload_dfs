@@ -284,4 +284,11 @@ BRKs in an emulator.
 |  14 | 1110 |   e |     7 |     3 |     e |
 |  15 | 1111 |   f |     7 |     3 |     f |
 
+* 64tass test
+
+#+begin_example
+-Wall --case-sensitive  --m65c02 --verbose-list --line-numbers --nostart -L "D:\tom\github\fdload_dfs/build/framework_bank.loader.lst" -o "D:\tom\github\fdload_dfs/build/framework_bank.loader.dat" "D:\tom\github\fdload_dfs\src\common\framework_bank.loader.s65" --labels-root=framework_bank_exports "--labels=D:\tom\github\fdload_dfs/build/framework_bank.loader.exports.asm" "--dump-labels" "--labels=D:\tom\github\fdload_dfs/build/framework_bank.loader.all.sym"
+#+end_example
+
+
 * eof
