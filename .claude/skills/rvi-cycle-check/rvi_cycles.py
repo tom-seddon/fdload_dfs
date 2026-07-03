@@ -1743,6 +1743,78 @@ def trace_frame_check(an, vcfg):
     return F, S
 
 
+def trace_effect_summary(an, vcfg):
+    """Short header block for a traced RVI effect: an EFFECT line (kind + row/
+    scanline geometry + PAL/vsync) and a FRAME line carrying the vertical/PAL-frame
+    breakdown (setup + loop x N + free-run tail = frame_lines, vsync line), plus
+    any structural gotchas. Auto-derived from the trace; returns body lines."""
+    frame = vcfg.get("frame_lines", 312)
+    tvsync = vcfg.get("target_vsync_pal_line")
+    setup = vcfg.get("setup_scanlines", 0)
+    iters = vcfg.get("loop_iterations", 0) or 0
+    each = vcfg.get("loop_scanlines_each", 2)
+
+    final = {}
+    for rw in an.reg_writes:
+        if rw["reg"] is not None:
+            final[rw["reg"]] = rw["val"]
+    R4, R7, R9 = final.get(4), final.get(7), final.get(9)
+
+    dispatch = any("jmpinstruc" in sl.code.lower() for sl in an.src_lines)
+    r0 = any(rw["reg"] == 0 for rw in an.reg_writes)
+    pal = sum(1 for sl in an.src_lines
+              if re.search(r"(?i)\bst[axy]\s+&fe2[0-9a-f]\b", sl.code))
+    nloops = len(getattr(an, "loops", []))
+
+    if iters == 0:
+        kind = "Static %d-line frame" % frame
+    elif r0:
+        kind = "Horizontal RVI (per-scanline R0)"
+    else:
+        kind = "Horizontal RVI"
+    extras = []
+    if dispatch:
+        extras.append("computed JMP dispatch (scanlineN)")
+    if pal >= 4:
+        extras.append("per-row ULA palette (%dx &FE2x)" % pal)
+    if nloops > 1:
+        extras.append("%d chained loops" % nloops)
+    kx = kind + (" -- " + ", ".join(extras) if extras else "")
+
+    out = []
+    vtxt = (", vsync %d" % tvsync) if tvsync is not None else ""
+    if iters:
+        geo = ("%d rows x %d scanlines" % (iters, each) if each > 1
+               else "%d scanlines" % iters)
+        out.append("EFFECT : %s; %s; PAL %d%s" % (kx, geo, frame, vtxt))
+    else:
+        out.append("EFFECT : %s; PAL %d%s" % (kx, frame, vtxt))
+
+    if R4 is not None and R9 is not None:
+        tail = (R4 + 1) * (R9 + 1)
+        vis = setup + iters * each
+        parts = []
+        if setup:
+            parts.append("setup %d" % setup)
+        if iters:
+            parts.append("loop %dx%d" % (iters, each))
+        parts.append("tail (R4+1)*(R9+1)=%d" % tail)
+        vs = ("; vsync PAL %d (R7=%d)" % (vis + R7 * (R9 + 1), R7)) \
+            if (tvsync is not None and R7 is not None) else ""
+        out.append("FRAME  : %s = %d lines%s" % (" + ".join(parts), vis + tail, vs))
+
+    gotchas = []
+    if r0:
+        gotchas.append("R0 varies per scanline (variable scanline length)")
+    if dispatch:
+        gotchas.append("dispatch entry can be ~1c off; scanline0's stretched "
+                       "&FE01 write resyncs (absorbed)")
+    if gotchas:
+        out.append("GOTCHA : " + gotchas[0])
+        out.extend("         " + g for g in gotchas[1:])
+    return out
+
+
 def build_report(an):
     out = []
     out.append(f"# RVI cycle analysis: .{an.func}")
@@ -2082,6 +2154,11 @@ def main():
         print("\n## Frame validation")
         for sev, msg in vF:
             print(f"  [{sev}] {msg}")
+        if args.summary:
+            summary = trace_effect_summary(an, cfg["vertical"])
+            print("\n## Effect summary (header block)")
+            for line in summary:
+                print(f"  {line}")
     elif cfg.get("vertical"):
         from crtc_vertical import analyse_vertical, build_effect_summary
         vF, vann, vS, vbound = analyse_vertical(an, cfg["vertical"])

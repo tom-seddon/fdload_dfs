@@ -547,6 +547,15 @@ latched R4/R9 ((R4+1)×(R9+1) scanlines) with vsync at row R7. The tool checks
 and `loop_iterations` are config-supplied because the trip count is often
 data-dependent (set outside the draw).
 
+`--summary` in trace mode inserts a `[effect-summary]` header block via
+`trace_effect_summary`: an EFFECT line (kind — static frame / horizontal RVI /
+per-scanline-R0, dispatch, chained loops — plus row/scanline geometry and
+PAL/vsync) and a **FRAME** line carrying the vertical/PAL-frame breakdown
+(`setup + loop×N + tail (R4+1)*(R9+1) = frame_lines; vsync PAL …`). It only
+inserts/refreshes the block; the `+N (cum)` per-line annotations are left
+untouched (the `; Nc`/`<== Nc` rewriters don't match that style). All 10
+funky-fresh effects carry this header.
+
 ## Known limitations / not yet done
 
 - **Multi-loop fixed-duration effects** (e.g. vblinds) are not summed for
