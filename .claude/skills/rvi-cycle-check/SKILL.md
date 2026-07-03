@@ -527,6 +527,15 @@ authoritative check**.
   this, an in-loop diamond branch polluted the loop-exit target. Validated clean
   (312, vsync 272) — same frame as vertical-stretch.
 
+- **funky-fresh / fx-texture-cube** (`funky-fresh`, BeebAsm) — **four** sequential
+  `dey/beq/jmp` loops (loop0..loop3, blank/texture/texture/blank cube faces) with
+  SMC-patched per-loop trip counts summing to 119 rows, each texture loop with a
+  `JMP jmptab1`/`jmptab2` dispatch (static target is the EQUB table, whose block
+  places scanline0 right after the 4 bytes, so the trace falls through into it).
+  The trace chains through all four loops (one iteration each) via the loop-exit
+  redirects and reaches the tail. Frame validates (312, vsync 272; same tail as
+  vertical-stretch); fixed one isolated cumulative typo (line 313, `55`→`56`).
+
 ### Trace-mode frame check (`trace_frame_check`)
 
 For a traced RVI effect, set a `vertical` block with `frame_lines`,
