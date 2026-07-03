@@ -516,6 +516,17 @@ authoritative check**.
   palette loop (`bar_y_rasters`/`bar_y_colours`, page-aligned). Validated clean
   first pass (312, vsync 272).
 
+- **funky-fresh / fx-stretch-grid** (`funky-fresh`, BeebAsm) — the most complex:
+  combines the vertical-stretch RVI dispatch (jmp-into-loop + jmptab `JMP scanlineN`),
+  frequency-style `FOR` colour-stripe loops, AND two **jump-away-and-back** balanced
+  structures (`bne colour_path / jmp set_black_palette / …` and `bne alt_path / …`).
+  Motivated the trace's forward-conditional classifier (`_peek_next_jump`): a
+  fall-through into a BACKWARD `jmp` is the loop-exit branch (not-taken, set the
+  loop exit); a fall-through into a FORWARD `jmp` is a jump-away-and-back skip, so
+  follow the branch TAKEN (the author's inline path) and skip the away arm. Before
+  this, an in-loop diamond branch polluted the loop-exit target. Validated clean
+  (312, vsync 272) — same frame as vertical-stretch.
+
 ### Trace-mode frame check (`trace_frame_check`)
 
 For a traced RVI effect, set a `vertical` block with `frame_lines`,

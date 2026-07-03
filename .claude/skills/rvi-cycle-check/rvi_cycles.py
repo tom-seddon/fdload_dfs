@@ -910,23 +910,42 @@ class Analyser:
                                                    "iter_len": None, "lineno": sl.lineno})
                             next_idx = tgt_line
                     else:
-                        # conditional branch. A BACKWARD target is a loop-back
-                        # (`dec c / bne loop`): taken 3c in the steady state, and
-                        # we've already traced one iteration so we fall through to
-                        # the exit. A FORWARD target is a skip/exit: trace the
-                        # not-taken (fall-through) path at 2c and remember the
-                        # taken path (3c) as the loop exit for a jmp-back loop.
+                        # conditional branch.
                         backward = tgt_line is not None and tgt_line <= idx
-                        cum += 2
-                        sl.line_cost += 2
                         if backward:
-                            # loop-back branch: the trace exits here (fall-through,
-                            # not-taken 2c) so the tail phase is correct, but the
-                            # author annotates the TAKEN loop cost (3c) -- flag it
-                            # loop-back so the report doesn't call that a mismatch.
+                            # loop-back (`dec c / bne loop`): trace exits here as
+                            # not-taken (2c) so the tail phase is right; author
+                            # annotates the TAKEN loop cost (3c) -- mark loop-back
+                            # so the report doesn't flag that expected difference.
+                            cum += 2
+                            sl.line_cost += 2
                             sl.is_loopback = True
-                        elif tgt_line is not None:
-                            loop_exit = (tgt_line, cum + 1)   # taken would be +3
+                        else:
+                            # forward conditional: classify by what the FALL-THROUGH
+                            # runs next.
+                            pk = self._peek_next_jump(idx + 1, end)
+                            if pk is not None and pk <= idx:
+                                # fall-through is an unconditional BACKWARD jump
+                                # (the loop-back): this is the LOOP-EXIT branch.
+                                # Trace the not-taken continue (2c) and remember
+                                # the taken target as the loop exit.
+                                cum += 2
+                                sl.line_cost += 2
+                                if tgt_line is not None:
+                                    loop_exit = (tgt_line, cum + 1)
+                            elif pk is not None:
+                                # fall-through jumps FORWARD and returns (jump-away-
+                                # and-back): the branch's own target is the inline
+                                # path, so follow it TAKEN (3c) -- the author's main
+                                # path -- and skip the away arm.
+                                cum += 3
+                                sl.line_cost += 3
+                                if tgt_line is not None:
+                                    next_idx = tgt_line
+                            else:
+                                # plain skip: trace the not-taken (inline) path.
+                                cum += 2
+                                sl.line_cost += 2
                     continue
 
                 if mnem in ("rts", "rti"):
@@ -968,6 +987,36 @@ class Analyser:
         self.src_lines = src_lines
         self._post_checks()
         return src_lines
+
+    def _peek_next_jump(self, from_idx, end):
+        """If the next active instruction at/after `from_idx` is an unconditional
+        jmp/bra, return its target line index; else None. Skips blank/comment/
+        label/directive/0-cost lines. Used to classify a forward conditional:
+        fall-through into a backward jmp => loop-exit branch; into a forward jmp
+        => jump-away-and-back skip (follow the branch taken instead)."""
+        for i in range(from_idx, min(end, len(self.lines))):
+            if not self.active_mask[i]:
+                continue
+            for st in split_statements(split_comment(self.lines[i])[0]):
+                s = st.strip()
+                if s == "" or s in ("{", "}", "\\{", "\\}"):
+                    continue
+                ml = re.match(r"^\.[\*\^]?[A-Za-z_]\w*\s*", s)
+                if ml:
+                    s = s[ml.end():].strip()
+                    if s == "":
+                        continue
+                if re.match(r"(?i)^(IF|ELIF|ELSE|ENDIF|PRINT|ALIGN|CHECK_SAME_PAGE_AS|"
+                            r"PAGE_ALIGN\w*)\b", s):
+                    continue
+                mj = re.match(r"(?i)^(jmp|bra)\s+([A-Za-z_]\w*)", s)
+                if mj:
+                    tl = self._find_label_line(mj.group(2), *self.func_range)
+                    if tl is None:
+                        tl = self._find_label_line(mj.group(2), 0, len(self.lines))
+                    return tl
+                return None      # some other instruction -> fall-through is inline
+        return None
 
     def _find_label_line(self, name, lo, hi):
         """Index of the line defining `.name` within [lo, hi), or None.
