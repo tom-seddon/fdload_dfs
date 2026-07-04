@@ -290,5 +290,15 @@ BRKs in an emulator.
 -Wall --case-sensitive  --m65c02 --verbose-list --line-numbers --nostart -L "D:\tom\github\fdload_dfs/build/framework_bank.loader.lst" -o "D:\tom\github\fdload_dfs/build/framework_bank.loader.dat" "D:\tom\github\fdload_dfs\src\common\framework_bank.loader.s65" --labels-root=framework_bank_exports "--labels=D:\tom\github\fdload_dfs/build/framework_bank.loader.exports.asm" "--dump-labels" "--labels=D:\tom\github\fdload_dfs/build/framework_bank.loader.all.sym"
 #+end_example
 
+#+begin_example
+-Wall --case-sensitive  --m65c02 --verbose-list --line-numbers --nostart -L "D:\tom\github\fdload_dfs/build/64tass_symbol_types.lst" -o "D:\tom\github\fdload_dfs/build/64tass_symbol_types.dat" "D:\tom\github\fdload_dfs\tests\64tass_dump_symbols\64tass_symbol_types.s65" "--dump-labels" "--labels=D:\tom\github\fdload_dfs/build/64tass_symbol_types.sym"
+#+end_example
+
+#+begin_example
+--m65xx -Wall -Wno-implied-reg -Wno-portable -C --line-numbers --long-branch -L "D:\tom\github\fdload_dfs\build\beeblink.lst" -o "D:\tom\github\fdload_dfs\build\beeblink.rom" "D:\tom\github\beeblink\beeb\beeblink.s65" -Dlink_tube_serial=true --debug-labels "--labels=D:\tom\github\fdload_dfs\build\beeblink.sym" -DVERSION=\"test\" -DCOMMIT=\"N/A\" -DBUILD_INFO=\"N/A\"
+#+end_example
+
+
+--debug-labels
 
 * eof

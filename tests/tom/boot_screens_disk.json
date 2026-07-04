@@ -7,7 +7,7 @@
 	    "type":"load_symbols",
 	    "args":{
 		"path":"framework_bank.loader.sym",
-		"format_name":"64tass_dumped_labels",
+		"format_name":"64tass_labels",
 		"suffixes":["7"],
 		"group":1
 	    }
@@ -16,7 +16,7 @@
 	    "type":"load_symbols",
 	    "args":{
 		"path":"framework_bank.loader.main_ram.sym",
-		"format_name":"64tass_dumped_labels",
+		"format_name":"64tass_labels",
 		"group":2
 	    }
 	},
