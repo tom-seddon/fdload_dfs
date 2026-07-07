@@ -1,5 +1,6 @@
 include "../shared_constants.asm"
 include "../../build/framework_bank.loader.exports.asm"
+include "../b2_constants.asm"
 
 VERBOSE=1
 cpu 1				; 65c02
@@ -108,6 +109,19 @@ equs "SCRNS11",0		; name
 
 .start_next_part
 {
+IF b2_debug<>0
+; disable part-specific symbol groups, so that each new part only has
+; to re-enable its own bit.
+ldx #0
+.reset_symbols_loop
+stx b2_debug_data
+lda #b2DebugCommand_DisableSymbolGroup
+sta b2_debug_cmd
+inx
+cpx #symbol_group_first_framework_group
+bne reset_symbols_loop
+ENDIF
+
 ldx #effect_zp_end-effect_zp_begin
 .loop
 stz [effect_zp_begin-1 AND $ff],x

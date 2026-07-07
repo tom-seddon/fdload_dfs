@@ -184,3 +184,10 @@ _tom:
 .PHONY:test_cycle_exact_via_poll
 test_cycle_exact_via_poll: _build_dependencies
 	$(MAKE) -C "tests/cycle_exact_via_poll"
+
+##########################################################################
+##########################################################################
+
+.PHONY: get_b2_constants
+get_b2_constants:
+	cd "src" && curl -O http://localhost:48075/b2_constants.asm

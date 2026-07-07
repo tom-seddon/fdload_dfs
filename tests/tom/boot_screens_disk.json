@@ -6,10 +6,32 @@
 	{
 	    "type":"load_symbols",
 	    "args":{
+		"path":"screens1.mode1.sym",
+		"format_name":"64tass_vice_labels",
+		"suffixes":["4"],
+		"group":1,
+		"group_name":""
+	    }
+	},
+	{
+	    "type":"load_symbols",
+	    "args":{
+		"path":"screens1.mode5.sym",
+		"format_name":"64tass_vice_labels",
+		"suffixes":["4"],
+		"group":2,
+		"group_name":""
+	    }
+	},
+	{
+	    "type":"load_symbols",
+	    "args":{
 		"path":"framework_bank.loader.sym",
 		"format_name":"64tass_labels",
 		"suffixes":["7"],
-		"group":1
+		"suffix_mode":"Inclusive",
+		"group":200,
+		"group_name":""
 	    }
 	},
 	{
@@ -17,7 +39,38 @@
 	    "args":{
 		"path":"framework_bank.loader.main_ram.sym",
 		"format_name":"64tass_labels",
-		"group":2
+		"group":201,
+		"group_name":""
+	    }
+	},
+	{
+	    "type":"load_symbols",
+	    "args":{
+		"path":"framework_bank.labels",
+		"format_name":"BeebAsm",
+		"suffixes":["7"],
+		"suffix_mode":"Inclusive",
+		"group":200,
+		"group_name":""
+	    }
+	},
+	{
+	    "type":"load_symbols",
+	    "args":{
+		"path":"boot.sym",
+		"format_name":"64tass_vice_labels",
+		"group":202,
+		"group_name":""
+	    }
+	},
+	{
+	    "type":"load_symbols",
+	    "args":{
+		"path":"music_bank.labels",
+		"format_name":"BeebAsm",
+		"suffixes":["6"],
+		"group":203,
+		"group_name":""
 	    }
 	},
 	{

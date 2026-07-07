@@ -3,6 +3,8 @@
                 .include 'dfs.s65'
                 .include 'zx02_decomp.s65'
                 .include 'fdload.s65'
+                .include '../b2_constants.asm'
+                .include '../shared_64tass.s65'
 
 ;-------------------------------------------------------------------------
 
@@ -495,6 +497,9 @@ _offset=main_ram_stuff_size-256
                 .endfor
                 inx
                 bne loop
+
+                .enable_symbol_group symbol_group_main_ram_loader
+                
                 rts
                 .endblock
 

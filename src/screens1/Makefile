@@ -18,8 +18,8 @@ default:
 	$(ZX02TOOL) pack --optimal "$(BEEBLINK)/3/$$.SCR3" -o "$(BUILD)/screens1.screen3.mode5.dat.zx02"
 	$(ZX02TOOL) pack --optimal "$(BEEBLINK)/3/$$.SCR4" -o "$(BUILD)/screens1.screen4.mode5.dat.zx02"
 
-	$(TASS) --nostart -L "$(BUILD)/screens1.mode1.lst" -o "$(BUILD)/screens1.mode1.dat" "screens1.s65" -D MODE=1
-	$(TASS) --nostart -L "$(BUILD)/screens1.mode5.lst" -o "$(BUILD)/screens1.mode5.dat" "screens1.s65" -D MODE=5
+	$(TASS) --nostart -L "$(BUILD)/screens1.mode1.lst" -o "$(BUILD)/screens1.mode1.dat" --vice-labels "--labels=$(BUILD)/screens1.mode1.sym" "screens1.s65" -D MODE=1
+	$(TASS) --nostart -L "$(BUILD)/screens1.mode5.lst" -o "$(BUILD)/screens1.mode5.dat" --vice-labels "--labels=$(BUILD)/screens1.mode5.sym" "screens1.s65" -D MODE=5
 
 # since it's 99% compressed data, it's not really worth compressing
 #	$(SHELLCMD) copy-file "$(BUILD)/screens1.dat" "$(BUILD)/$$.SCRNS1"

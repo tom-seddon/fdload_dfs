@@ -6,7 +6,7 @@ endif
 default: $(BUILD)/U_LOADER.vgc
 	$(SHELLCMD) echo-emacs-compilation-mode-marker
 
-	$(BEEBASM) -v -i "music_bank.asm" -o "$(BUILD)/music_bank.dat" > "$(BUILD)/music_bank.txt"
+	$(BEEBASM) -v -i "music_bank.asm" -o "$(BUILD)/music_bank.dat" -dd -labels "$(BUILD)/music_bank.labels" > "$(BUILD)/music_bank.txt"
 	$(ZX02TOOL) pack "$(BUILD)/music_bank.dat" -o "$(BUILD)/Z.MUSIC"
 
 $(BUILD)/U_LOADER.vgc : ./vgms/U_LOADER.vgm

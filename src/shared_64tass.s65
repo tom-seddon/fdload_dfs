@@ -1,0 +1,25 @@
+do_symbol_group: .macro index,cmd
+                pha
+                lda #\index
+                sta b2_debug_data
+                lda #\cmd
+                sta b2_debug_cmd
+                pla
+                .endmacro
+
+enable_symbol_group: .macro index
+                .if b2_debug!=0
+                .do_symbol_group (\index),b2DebugCommand_EnableSymbolGroup
+                .endif
+                .endmacro
+
+disable_symbol_group: .macro index
+                .if b2_debug!=0
+                .do_symbol_group (\index),b2DebugCommand_DisableSymbolGroup
+                .endif
+                .endmacro
+
+disable_loader_symbol_group: .macro
+                .disable_symbol_group symbol_group_main_ram_loader
+                .endmacro
+                

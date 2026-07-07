@@ -13,6 +13,7 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+; if true, enable the b2 debug stuff.
 b2_debug=1
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -191,6 +192,37 @@ framework_update_music=$20a
 
 ; 
 framework_set_default_irq_handler=$20c
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;
+; b2 debug stuff.
+;
+; The symbol group numbers have to match those set in
+; tests\tom\boot_screens_disk.json. (This is a WIP mechanism, as yet
+; not very scalable.)
+
+b2_debug_data=$fc51
+b2_debug_cmd=$fc52
+b2_debug_status=$fc52
+
+; group 0 is deliberately unused.
+symbol_group_screens1_mode1=1
+symbol_group_screens1_mode5=2
+
+; 
+symbol_group_first_framework_group=200
+
+; general framework bank contents, plus zero page workspace.
+symbol_group_framework_bank=200
+
+; loader code at its main RAM addresses.
+symbol_group_main_ram_loader=201
+
+; boot loader.
+symbol_group_boot=202
+
+; music bank.
+symbol_group_music_bank=203
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ; Local Variables:

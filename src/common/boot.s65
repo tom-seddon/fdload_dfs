@@ -3,8 +3,10 @@ zx02_decomp_enable_multi_part=false
 
                 .include '../../dependencies/beeb/include/beeb.s65'
                 .include '../shared_constants.asm'
+                .include '../b2_constants.asm'
                 .include 'zx02_decomp.s65'
                 .include '../../build/framework_bank.loader.exports.asm'
+                .include '../shared_64tass.s65'
 
 ;-------------------------------------------------------------------------
 
@@ -16,6 +18,13 @@ zx02_decomp_enable_multi_part=false
 
 *=$1900
                 sta $f000       ; initiate b2 trace
+
+                .if b2_debug!=0
+                lda #b2DebugCommand_DisableAllSymbolGroups
+                sta b2_debug_cmd
+
+                .enable_symbol_group symbol_group_boot
+                .endif
                 
                 lda #0          ; OSBYTE get OS version
                 ldx #1          ; return type, no BRK
@@ -145,6 +154,8 @@ copy_page02_loop:
                 inx
                 bne copy_page02_loop
 
+                .enable_symbol_group symbol_group_framework_bank
+
                 ; copy loader code in.
                 jsr framework_rom_copy_in
 
@@ -166,6 +177,8 @@ copy_page02_loop:
 
                 ; the loader assumes there is no disk access ongoing!
                 jsr framework_ram_fdload_wait_not_busy
+
+                .disable_symbol_group symbol_group_boot
 
                 ; load fw
                 ldx #<load_fw_args

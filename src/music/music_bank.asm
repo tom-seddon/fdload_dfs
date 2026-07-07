@@ -2,6 +2,8 @@
 
 CPU 1				; 65c02
 INCLUDE "../shared_constants.asm"
+include "../b2_constants.asm"
+include "../shared_beebasm.asm"
 
 ; VGC player flags.
 ENABLE_HUFFMAN=FALSE
@@ -29,6 +31,8 @@ ORG music_bank_update:jmp update
 
 .init
 {
+enable_symbol_group symbol_group_music_bank ; since we're clearly now running...
+
 lda #hi(vgm_buffer_start)
 ldx #lo(vgc_data)
 ldy #hi(vgc_data)

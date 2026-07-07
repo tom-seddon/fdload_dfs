@@ -28,7 +28,7 @@ default:
 	$(PYTHON) "$(BEEB_BIN)/filter_64tass_labels.py" -o "$(BUILD)/framework_bank.loader.sym" --vice-labels-input --value-range None 0x800 --value-range 0x1000 None "$(BUILD)/framework_bank.loader.all.sym" 
 	$(PYTHON) "$(BEEB_BIN)/filter_64tass_labels.py" -o "$(BUILD)/framework_bank.loader.main_ram.sym" --vice-labels-input --value-range 0x800 0x1000 "$(BUILD)/framework_bank.loader.all.sym" 
 
-	$(TASS) --cbm-prg -L "$(BUILD)/boot.lst" -o "$(BUILD)/boot.prg" "boot.s65" --dump-labels "--labels=$(BUILD)/boot.sym"
+	$(TASS) --cbm-prg -L "$(BUILD)/boot.lst" -o "$(BUILD)/boot.prg" "boot.s65" --vice-labels "--labels=$(BUILD)/boot.sym"
 	$(PYTHON) "$(BEEB_BIN)/prg2bbc.py" --io "$(BUILD)/boot.prg" "$(BEEBLINK)/Z/$$.!BOOT"
 
 	$(BEEBASM) -w -i "framework_bank.asm" -o "$(BUILD)/framework_bank.dat" -dd -labels "$(BUILD)/framework_bank.labels" > "$(BUILD)/framework_bank.txt"

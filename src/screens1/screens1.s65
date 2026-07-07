@@ -1,5 +1,7 @@
                 .include '../shared_constants.asm'
                 .include '../../dependencies/beeb/include/beeb.s65'
+                .include '../b2_constants.asm'
+                .include '../shared_64tass.s65'
 
 *=0
 screen_index: .fill 1
@@ -8,7 +10,15 @@ transition_done: .fill 1
 screens=[screen0,screen1,screen2,screen3,screen4]
                 
 *=$8000
-
+                ; TODO - some better mechanism than this, surely
+                .if MODE==1
+                .enable_symbol_group symbol_group_screens1_mode1
+                .elsif MODE==5
+                .enable_symbol_group symbol_group_screens1_mode5
+                .else
+                .error
+                .endif
+                
                 ; page in whichever RAM isn't displayed
                 lda acccon
                 lsr a          ; C=1 if displaying shadow; C=0 if main
