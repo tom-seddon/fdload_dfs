@@ -605,9 +605,15 @@ stop_transition:
 
 ;-------------------------------------------------------------------------
 
-                .fill $258-*,0
-                .byte 3         ; *FX200,3
-
+                ; Ensure $0258 is $03 - meaning a memory clear on the
+                ; next break.
+                ;
+                ; $03 is a 1-cycle 65c02 NOP, so just fill the whole
+                ; region. Too much code inserted before, and there'll
+                ; be an error - but with a bit of shuffling, it can
+                ; just fall through this region and carry on.
+                .fill $259-*,3
+                
 ;-------------------------------------------------------------------------
 
 page02_copy_in:
